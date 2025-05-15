@@ -37,7 +37,21 @@ class Post(SQLModel, table=True):
         default_factory = lambda: datetime.now(timezone.utc), 
         sa_column_kwargs= {"onupdate": func.now()}, nullable=False)
     # add foreign key
-    user_id: int = Field(foreign_key = "user.user_id")
-        
+    user_id: int = Field(foreign_key = "users.user_id")
+
+
+
+
+
+class Comment(SQLModel, table=True):
+    __tablename__ = "comments"
     
+    comment_id: Optional[str] = Field(default_factory=None, primary_key=True)
+    content: str = Field(max_length=450, index=True, nullable=False)
+    created_at: datetime = Field(default_factory = lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: datetime = Field(
+        default_factory = lambda: datetime.now(timezone.utc), 
+        sa_column_kwargs= {"onupdate": func.now()})
+    # add foreign key
+    post_id: int = Field(foreign_key = "posts.post_id")
     
