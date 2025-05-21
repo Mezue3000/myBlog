@@ -48,7 +48,6 @@ class Post(SQLModel, table=True):
 
 
 
-
 # create comment model
 class Comment(SQLModel, table=True):
     __tablename__ = "comments"
@@ -61,6 +60,7 @@ class Comment(SQLModel, table=True):
     # create relationship
     user: Mapped["User"] = Relationship(back_populates = "comments")
     post: Mapped["Post"] = Relationship(back_populates = "comments")
+    
     
     
 # rebuild models
