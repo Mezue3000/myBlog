@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from app.models import User, Post, Comment
 import os
 from dotenv import load_dotenv
-import asyncio
+import asyncio   
 
 
 # load environment variable

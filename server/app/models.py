@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped
 class User(SQLModel, table=True):
     __tablename__ = "users"
     
-    user_id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, primary_key=True) 
     first_name: str = Field(max_length=25, nullable=False)
     last_name: str = Field(max_length=25, nullable=False)
     username: str = Field(max_length=75, nullable=False, index=True)
