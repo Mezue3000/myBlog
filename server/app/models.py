@@ -43,7 +43,9 @@ class Post(SQLModel, table=True):
     user: Mapped["User"] = Relationship(back_populates = "posts")
     comments: Mapped[List["Comment"]] = Relationship(back_populates = "post")
     
-    __table_args__ = (Index('post_title_idx', 'title', 'content', mysql_prefix='FULLTEXT')) 
+    __table_args__ = (
+        Index('post_title_idx', 'title', 'content', mysql_prefix='FULLTEXT'),
+        ) 
     
 
 
