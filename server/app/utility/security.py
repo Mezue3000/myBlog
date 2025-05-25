@@ -14,10 +14,11 @@ async def hash_password(password):
 
 # function to verify password
 async def verify_password(plain_password, hash_password):
-    return await asyncio.to_thread(pwd_context.verify, plain_password, hash_password) 
+    return await asyncio.to_thread(pwd_context.verify, plain_password, hash_password)
 
 
 # if __name__ == "__main__":
 #     hasy = asyncio.run(hash_password("monday345"))
+#     asyncio.run(verify_password("monday345", hasy))
 #     print(hasy)
     
