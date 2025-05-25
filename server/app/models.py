@@ -2,6 +2,8 @@
 from sqlmodel import SQLModel, Field, Relationship, func, Index
 from typing import Optional, List
 from datetime import datetime, timezone
+from sqlalchemy import ForeignKey
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped
 
 
@@ -37,12 +39,19 @@ class Post(SQLModel, table=True):
     updated_at: datetime = Field(
         default_factory = lambda: datetime.now(timezone.utc), 
         sa_column_kwargs= {"onupdate": func.now()})
-    # add foreign key
-    user_id: int = Field(foreign_key = "users.user_id")
+    # add foreign key with cascade and restrict 
+    user_id: int = Field(
+        sa_column=sa.Column(
+            sa.Integer,
+            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="RESTRICT"),
+            nullable=False
+        )
+    )  
     # create relationship
     user: Mapped["User"] = Relationship(back_populates = "posts")
     comments: Mapped[List["Comment"]] = Relationship(back_populates = "post")
     
+    # add fulltext index on title and comment
     __table_args__ = (
         Index('post_title_idx', 'title', 'content', mysql_prefix='FULLTEXT'),
         ) 
