@@ -3,28 +3,36 @@ import sys
 import os
 import asyncio
 from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import async_engine_from_config, AsyncSession
 from alembic import context
 from dotenv import load_dotenv
-from sqlmodel import SQLModel 
+from sqlmodel import SQLModel
 
 
-# make path easy to find
+
+# define path finder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 
-#load environmental variable
+
+# load environmental variable
 load_dotenv("C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
+
 
 
 # get Alembic config object
 config = context.config
 
 
+
 # get environmental variable
 database_url = os.getenv("DATABASE_URL")
+
+
+
+# set database url
 config.set_main_option("sqlalchemy.url", database_url)
+
 
 
 # Alembic configuration
@@ -32,13 +40,15 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
+
 # Import your models
 from app.models import User, Post, Comment 
 target_metadata = SQLModel.metadata
 
 
+
+# run migrations asynchronously
 async def run_migrations_online(): 
-    """Run migrations asynchronously."""
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
