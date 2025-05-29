@@ -9,7 +9,7 @@ import asyncio
 
 
 # load environment variable
-load_dotenv()
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
 
 
 # get database environment variable

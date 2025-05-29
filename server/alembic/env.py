@@ -16,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 
 # load environmental variable
-load_dotenv("C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
 
 
 

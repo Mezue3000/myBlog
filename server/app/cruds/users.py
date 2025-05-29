@@ -32,13 +32,13 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
         
     # create new user with hash password function
     new_user = User(
-        first_name=user.first_name,
-        last_name=user.last_name,
-        username=user.username,
-        email=user.email,
+        first_name=user.first_name.lower(),
+        last_name=user.last_name.lower(),
+        username=user.username.lower(),
+        email=user.email.lower(),
         password_hash=hash_password(user.password),
-        country=user.country,
-        city=user.city
+        country=user.country.lower(),
+        city=user.city.lower() 
     )
     
     db.add(new_user)

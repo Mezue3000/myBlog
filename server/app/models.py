@@ -71,7 +71,8 @@ class Comment(SQLModel, table=True):
     content: str = Field(max_length=225, index=True, nullable=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False) 
     # add foreign key
-    post_id: int = Field(foreign_key = "posts.post_id")
+    post_id: int = Field(foreign_key="posts.post_id")
+    user_id: int = Field(foreign_key="users.user_id")
     # create relationship
     user: Mapped["User"] = Relationship(back_populates="comments")
     post: Mapped["Post"] = Relationship(back_populates="comments")
