@@ -17,15 +17,18 @@ class User(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, primary_key=True) 
     first_name: str = Field(max_length=25, nullable=False)
     last_name: str = Field(max_length=25, nullable=False)
-    username: str = Field(max_length=75, nullable=False, index=True)
-    email: str = Field(max_length=75, nullable=False)
+    username: str = Field(max_length=75, nullable=False, unique=True, index=True)
+    email: str = Field(max_length=75, nullable=False, unique=True)
     password_hash: str = Field(max_length=255, nullable=False)
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
+    updated_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # create relationship
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")
-    comments: Mapped[List["Comment"]] = Relationship(back_populates="user")
+    comments: Mapped[List["Comment"]] = Relationship(back_populates="user") 
     
 
 
@@ -40,8 +43,8 @@ class Post(SQLModel, table=True):
     content: str = Field(max_length=450, nullable=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
     updated_at: datetime = Field(
-        default_factory = lambda: datetime.now(timezone.utc), 
-        sa_column_kwargs= {"onupdate": func.now()})
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # add foreign key with cascade and restrict 
     user_id: int = Field(
         sa_column=sa.Column(
@@ -83,4 +86,4 @@ class Comment(SQLModel, table=True):
 # resolve forward reference
 User.model_rebuild()
 Post.model_rebuild()
-Comment.model_rebuild()    
+Comment.model_rebuild()     

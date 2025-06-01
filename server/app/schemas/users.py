@@ -23,11 +23,10 @@ class UserCreate(UserBase):
 
 
 
-# schema for read user
+# schema for reading user
 class UserRead(UserBase):
     user_id: int
     created_at: datetime
-    # posts: List["PostReadShort"] = []
     
     model_config = ConfigDict(from_attributes=True)
     
