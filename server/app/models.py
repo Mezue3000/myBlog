@@ -19,6 +19,7 @@ class User(SQLModel, table=True):
     last_name: str = Field(max_length=25, nullable=False)
     username: str = Field(max_length=75, nullable=False, unique=True, index=True)
     email: str = Field(max_length=75, nullable=False, unique=True)
+    biography: str = Field(max_length=350, nullable=True)
     password_hash: str = Field(max_length=255, nullable=False)
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)

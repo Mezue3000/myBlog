@@ -34,7 +34,7 @@ async def get_db():
 async def create_table():
     async with async_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    await async_engine.dispose()
+    await async_engine.dispose() 
     
     
 # run async function

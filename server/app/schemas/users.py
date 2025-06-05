@@ -11,6 +11,7 @@ class UserBase(SQLModel):
     last_name: str = Field(min_length=2, max_length=25)
     username: str = Field(min_length=2, max_length=55)
     email: EmailStr
+    biography: str
     country: str
     city: str
     
@@ -27,6 +28,7 @@ class UserCreate(UserBase):
 class UserRead(UserBase):
     user_id: int
     created_at: datetime
+    updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
     

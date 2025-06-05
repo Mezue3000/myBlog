@@ -13,6 +13,7 @@ from app.utility.security import hash_password
 router = APIRouter(tags=["Users"], prefix="/users")
 
 
+
 # create endpoint for user registration
 @router.post("/", response_model=UserRead)
 async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
@@ -36,6 +37,7 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
         last_name=user.last_name.lower(),
         username=user.username.lower(),
         email=user.email.lower(),
+        biography=user.biography.lower(),
         password_hash=hash_password(user.password),
         country=user.country.lower(),
         city=user.city.lower() 
