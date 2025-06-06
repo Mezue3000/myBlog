@@ -10,7 +10,7 @@ from app.utility.security import hash_password
 
 
 # initialize router
-router = APIRouter(tags=["Users"], prefix="/users")
+router = APIRouter(tags=["Users"], prefix="/users") 
 
 
 
@@ -37,7 +37,7 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
         last_name=user.last_name.lower(),
         username=user.username.lower(),
         email=user.email.lower(),
-        biography=user.biography.lower(),
+        biography=user.biography,
         password_hash=hash_password(user.password),
         country=user.country.lower(),
         city=user.city.lower() 
