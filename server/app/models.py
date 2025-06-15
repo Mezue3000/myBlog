@@ -27,7 +27,7 @@ class User(SQLModel, table=True):
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # create relationship
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")
-    comments: Mapped[List["Comment"]] = Relationship(back_populates="user")  
+    comments: Mapped[List["Comment"]] = Relationship(back_populates="user")    
     
 
 
