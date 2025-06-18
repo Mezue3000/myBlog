@@ -36,7 +36,7 @@ class UserRead(UserBase):
     
 
 # schema to update user fields
-class UserUpadate(SQLModel):
+class UserUpdate(SQLModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     username: Optional[str] = None
