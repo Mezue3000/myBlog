@@ -65,7 +65,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     credential_exception = HTTPException(
         status_code = status.HTTP_401_UNAUTHORIZED, 
         detail = "Invalid credentials", 
-        headers = {"www.Authenticate" : "Bearer"})
+        headers = {"WWW.Authenticate": "Bearer"})
     
     expired_token_error = HTTPException(
         status_code = status.HTTP_401_UNAUTHORIZED,
@@ -86,8 +86,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise credential_exception 
     
     statement = select(User).where(User.username == token_data.username)
-    result = await db.exec(statement)
-    user = result.one_or_none
+    result = await db.execute(statement)
+    user = result.scalars().first()
     
     if user is None:
         raise credential_exception

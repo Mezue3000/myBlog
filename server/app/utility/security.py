@@ -10,17 +10,17 @@ pwd_context = CryptContext(schemes=["argon2"], default="argon2")
 
 
 # function to hash password
-async def hash_password(password):
+async def hash_password(password: str) -> str:
     return await asyncio.to_thread(pwd_context.hash, password)
 
 
 # function to verify password
-async def verify_password(plain_password, hash_password):
+async def verify_password(plain_password: str, hash_password: str) -> bool:
     return await asyncio.to_thread(pwd_context.verify, plain_password, hash_password)
 
 
 # Utility to check password strength
-def validate_password_strength(password):
+def validate_password_strength(password: str):
     if not re.search(r"[a-z]", password):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Password must contain at least one lowercase letter")

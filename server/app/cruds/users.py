@@ -36,6 +36,8 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exist")
         if existing_user.email == user.email:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exist")
+    
+    hashed_password = await hash_password(user.password)
         
     # create new user with hash password function
     new_user = User(
@@ -44,7 +46,7 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
         username=user.username.lower(),
         email=user.email.lower(),
         biography=user.biography,
-        password_hash=hash_password(user.password),
+        password_hash=hashed_password,
         country=user.country.lower(),
         city=user.city.lower() 
     )
@@ -59,21 +61,27 @@ async def create_user(user:UserCreate, db:AsyncSession=Depends(get_db)):
 
 
 # create endpoint to retrieve user
-@router.get("/me", response_model=UserRead)
-async def read_user(db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
-    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    return result.one_or_none
-
+@router.get("/read_user", response_model=UserRead)
+async def read_user(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return current_user
+    # result = await db.execute(select(User).where(User.user_id == current_user.user_id))
+    # db_user = result.one_or_none()
+    
+    # if not db_user:
+    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    # return db_user
 
 
 
 # create user update endpoint
-@router.put("/me", response_model=UserUpdateRead)
-async def update_user(user_data:UserUpdate,
-                      db:AsyncSession=Depends(get_db), 
-                      current_user:User=Depends(get_current_user)): 
+@router.put("/update_user", response_model=UserUpdateRead)
+async def update_user(
+    user_data: UserUpdate, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+): 
     result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.one_or_none
+    db_user = result.scalars().first()
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -93,12 +101,14 @@ async def update_user(user_data:UserUpdate,
 
 
 # create endpoint to change user password
-@router.put("/me", status_code=status.HTTP_200_OK)
-async def update_password(payload:UserPasswordUpdate, 
-                          db:AsyncSession=Depends(get_db), 
-                          current_user:User=Depends(get_current_user)):
+@router.put("/chamge_password", status_code=status.HTTP_200_OK)
+async def update_password(
+    payload: UserPasswordUpdate, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.one_or_none
+    db_user = result.scalars().first()
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -127,10 +137,13 @@ async def update_password(payload:UserPasswordUpdate,
      
     
 # create endpoint to delete user
-@router.delete("/me", status_code=status.HTTP_200_OK)
-async def delete_user(db:AsyncSession=Depends(get_db), current_user:User=Depends(get_current_user)):
+@router.delete("/delete_user", status_code=status.HTTP_200_OK)
+async def delete_user(
+    db: AsyncSession  =Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.one_or_none
+    db_user = result.scalars().first()
     
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

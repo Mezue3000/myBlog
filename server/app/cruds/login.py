@@ -24,10 +24,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     result = await db.execute(statement)
     user = result.scalars().first()
     
-    if not user or not verify_password(password, user.password_hash): 
+    verified_password = await verify_password(password, user.password_hash)
+    if not user or not verified_password: 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail= "Invalid email/username or password"
+            detail="Invalid email/username or password"
         )
     
     # generate jwt access token 
