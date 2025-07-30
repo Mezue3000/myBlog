@@ -1,4 +1,5 @@
 # import dependencies
+# from __future__ import annotations
 from sqlmodel import SQLModel, Field, Relationship, func, Index
 from typing import Optional, List
 from datetime import datetime, timezone

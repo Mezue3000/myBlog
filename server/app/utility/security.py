@@ -1,8 +1,10 @@
 # import dependencies
 from passlib.context import CryptContext
 import asyncio
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 import re
+import asyncio
+import time
 
 
 # initialize crypt context
@@ -38,4 +40,49 @@ def validate_password_strength(password: str):
 #     hasy = asyncio.run(hash_password("monday345"))
 #     asyncio.run(verify_password("monday345", hasy))
 #     print(hasy) 
+
+
+
+
+# Define rate limiting in-memory store
+RATE_LIMIT_STORE = {} 
+LOCKED_OUT_USERS = {}  
+RATE_LIMIT = 3  # Max attempts
+RATE_WINDOW = 60  # In seconds
+LOCKOUT_TIME = 180  # Lockout duration in seconds (3 minutes)
+RATE_LIMIT_LOCK = asyncio.Lock()
+
+
+
+# Thread-safe rate limiting dependency
+async def rate_limit(request: Request):
+    ip = request.client.host
+    now = time.time()
+
+    async with RATE_LIMIT_LOCK:
+        # Check if user is locked out
+        if ip in LOCKED_OUT_USERS:
+            lockout_end = LOCKED_OUT_USERS[ip]
+            if now < lockout_end:
+                remaining = int(lockout_end - now)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS, 
+                    detail=f"Too many attempts. Try again in {remaining} seconds")
+            else:
+                del LOCKED_OUT_USERS[ip]  # Unlock after lockout ends
+
+        attempts = RATE_LIMIT_STORE.get(ip, [])
+        # Filter old attempts outside the window
+        attempts = [ts for ts in attempts if now - ts < RATE_WINDOW]
+
+        if len(attempts) >= RATE_LIMIT:
+            LOCKED_OUT_USERS[ip] = now + LOCKOUT_TIME
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS, 
+                detail="Too many login attempts. Try again later.")
+
+        # Record current attempt
+        attempts.append(now)
+        RATE_LIMIT_STORE[ip] = attempts
+
     
