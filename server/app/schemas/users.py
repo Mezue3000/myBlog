@@ -28,6 +28,7 @@ class UserCreate(UserBase):
 # schema for reading user
 class UserRead(UserBase):
     user_id: int
+    email: EmailStr
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -61,3 +62,10 @@ class UserPasswordUpdate(SQLModel):
     old_password: str = Field(min_length=12)
     new_password: str = Field(min_length=12)
     confirm_password: str = Field(min_length=12)  
+    
+    
+    
+
+# schema for email verification
+class EmailRequest(SQLModel):
+    email: EmailStr
