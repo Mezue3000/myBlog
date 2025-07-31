@@ -16,7 +16,7 @@ from app.models import User
 
 
 # load private key from file
-with open("C:/Users/HP/Desktop/Python-Notes/blog_post/server/ec_private.pem", "rb") as f:
+with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem", "rb") as f:
      PRIVATE_KEY = f.read()
 
 private_key = serialization.load_pem_private_key(PRIVATE_KEY, password=None) 
@@ -25,7 +25,7 @@ private_key = serialization.load_pem_private_key(PRIVATE_KEY, password=None)
 
 
 # load public key from file
-with open("C:/Users/HP/Desktop/Python-Notes/blog_post/server/ec_public.pem", "rb") as f: 
+with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_public.pem", "rb") as f: 
      PUBLIC_KEY = f.read() 
 
 public_key = serialization.load_pem_public_key(PUBLIC_KEY)

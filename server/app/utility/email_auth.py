@@ -9,7 +9,8 @@ from fastapi_mail import FastMail, ConnectionConfig, MessageSchema
 
 
 #  load environment variable
-load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
+
 
 
 
@@ -68,7 +69,7 @@ async def send_verification_email(email: EmailStr, token: str):
         color: white;
         background-color: #007BFF;
         text-decoration: none;
-        border-radius: 5px;
+        border-radius: 7px;
     ">Verify Email</a>
     """
     

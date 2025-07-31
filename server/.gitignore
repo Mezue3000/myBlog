@@ -1,3 +1,4 @@
 .env
 __pycache__
+my-venv
 ec_private.pem
