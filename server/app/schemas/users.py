@@ -40,8 +40,7 @@ class UserRead(UserBase):
 class UserUpdate(SQLModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    username: Optional[str] = None
-    email: Optional[str] = None
+    username: Optional[str] = None  
     biography: Optional[str] = None
     country: Optional[str] = None
     city: Optional[str] = None
@@ -69,3 +68,12 @@ class UserPasswordUpdate(SQLModel):
 # schema for email verification
 class EmailRequest(SQLModel):
     email: EmailStr
+    
+    
+    
+    
+# schema to update email
+class EmailUpdate(SQLModel):
+    new_email: EmailStr
+    password: str
+    

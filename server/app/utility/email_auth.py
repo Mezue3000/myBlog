@@ -42,11 +42,11 @@ def decode_token(token: str) -> str:
 
 
 # define fastapi mail config params 
-config = ConnectionConfig(
+mail_config = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
     MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=int(os.getenv("MAIL_PORT")),
+    MAIL_PORT=587,
     MAIL_SERVER=(os.getenv("MAIL_SERVER")), 
     MAIL_STARTTLS=True,
     MAIL_SSL_TLS=False,
@@ -54,33 +54,47 @@ config = ConnectionConfig(
     VALIDATE_CERTS=True
 )
 
-
-
-# function to send verification mail
-async def send_verification_email(email: EmailStr, token: str):          
-    link = f"http://localhost:8000/verify-email?token={token}"
-    body = f"""
-    <h3>Verify your email address</h3>
-    <p>you need to verify your email address to continue with your registration. Click the button below to verify your email address:<p/>
-    <a href="{link}" style="
-        display: inline-block;
-        padding: 10px 20px;
-        font-size: 16px;
-        color: white;
-        background-color: #007BFF;
-        text-decoration: none;
-        border-radius: 7px;
-    ">Verify Email</a>
-    """
     
+
+
+# Asynchronous function to send a verification email
+async def send_verification_email(
+    email: EmailStr, 
+    token: str,
+    link: str,
+    template_type: str
+):
+    if template_type == "registration":
+        message = "You need to verify your email address to complete your registration. Click the button below to verify your email address"
+    elif template_type == "update":
+        message = "You need to verify your new email address to complete your update. Click the button below to verify your new email address"
+    else:
+        message = "please verify your email"
+    # Construct the full verification link
+    verification_link = f"http://localhost:8000/{link}?token={token}"
+    html_content = f"""
+        <h2>Verify your email address</h2>
+        <hr/>
+        <p>{message}</p>
+        <a href="{verification_link}" style="
+            display: inline-block;
+            padding: 12px 24px;
+            font-size: 15px;
+            color: white;
+            background-color: #007BFF;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 10px;
+        ">Verify Email</a>
+        <p>If you did not request this, please ignore this email.</p>
+    """
+
     message = MessageSchema(
-        subject="Email verification",
+        subject="Email Verification",
         recipients=[email],
-        body=body,
+        body=html_content,
         subtype="html"
     )
-    fm = FastMail(config)
-    await fm.send_message(message)
-    
 
-
+    fast_mail = FastMail(mail_config)
+    await fast_mail.send_message(message)

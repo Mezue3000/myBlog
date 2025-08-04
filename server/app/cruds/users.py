@@ -1,6 +1,6 @@
 # import dependencies
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate
+from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
@@ -31,7 +31,7 @@ async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends
     # generate token
     token = create_email_token(user_data.email) 
     try:
-        await send_verification_email(user_data.email, token)
+        await send_verification_email(user_data.email, token, "verify-email", "registration")
         return {"message": "Verification email sent, check your email to verify"}   
     except ConnectionRefusedError:
         raise HTTPException(
@@ -140,50 +140,51 @@ async def read_user(db: AsyncSession = Depends(get_db), current_user: User = Dep
   
   
   
-
 # create user update endpoint
 @router.put("/update_user", response_model=UserUpdateRead)
 async def update_user(
     user_data: UserUpdate, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
-): 
-    # Retrieve the current user's full record
-    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.scalars().first()
-    
-    if not db_user: 
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+):
     update_fields = user_data.model_dump(exclude_unset=True)
     
-    # check for duplicates in username and email
-    if "username" in update_fields and "email" in update_fields:
-        statement = select(User).where(
-            or_(User.username == update_fields.get("username"), User.email == update_fields.get('email'))
-        )
-    result = await db.execute(statement)
-    existing_user = result.scalars().first()
-    
+    # Check for duplicate username
+    if "username" in update_fields:
+        stmt_username = select(User).where(User.username == update_fields["username"])
+        result = await db.execute(stmt_username)
+        existing_user = result.scalars().first()
     if existing_user and existing_user.user_id != current_user.user_id:
-            if existing_user.username == update_fields.get("username"):
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken.")
-            if existing_user.email == update_fields.get("email"):
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken."
+        )
 
-     # Apply updates
+    # Check for duplicate email
+    if "email" in update_fields:
+       stmt_email = select(User).where(User.email == update_fields["email"])
+       result = await db.execute(stmt_email)
+       existing_user = result.scalars().first()
+    if existing_user and existing_user.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already in use."
+        )
+
+
+    # Apply updates
     for key, value in update_fields.items():
-        setattr(db_user, key, value)
+        setattr(current_user, key, value)
 
-    db.add(db_user)
+    db.add(current_user)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Integrity error while updating user.")
 
-    await db.refresh(db_user)
-    return db_user
+    await db.refresh(current_user)
+    return current_user
 
 
 
@@ -196,13 +197,8 @@ async def update_password(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.scalars().first()
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
     # validate old password
-    if not await verify_password(payload.old_password, db_user.password_hash):
+    if not await verify_password(payload.old_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
     
     # ensure new password is not same with old password
@@ -217,21 +213,101 @@ async def update_password(
         )   
     
     # validate strength
-    validate_password_strength(payload.new_password)
+    validate_password_strength(payload.new_password) 
     
      # hash and assign the new password
-    db_user.password_hash = await hash_password(payload.new_password)
+    current_user.password_hash = await hash_password(payload.new_password)
     
     # update and save 
     await db.commit()
-    await db.refresh(db_user)
+    await db.refresh(current_user)
     
     return {"detail": "Password updated successfully"}
      
      
      
-     
     
+# endpoint to update email
+@router.put("/update_email", status_code=status.HTTP_200_OK)
+async def update_email( 
+    user: EmailUpdate, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # check if new-email already exist
+    result = await db.execute(select(User).where(User.email == user.new_email))
+    existing_email = result.scalars().first()
+    
+    if existing_email: 
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exist")
+    
+    # validate password
+    if not await verify_password(user.password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password incorrect")
+    
+    # generate token
+    token = create_email_token(user.new_email)
+    try:
+        await send_verification_email(user.new_email, token, "verify_email_update", "update")
+        return {"message": "Verification email sent, check your email to verify"}   
+    except ConnectionRefusedError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail="Service Unavailable: Unable to connect to email server"
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, 
+            detail="Gateway Timeout: Email sending timed out"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Internal Server Error: {str(e)}"
+        )
+
+   
+    
+    
+    
+# create endpoint to verify new email
+@router.get("/verify_email_update")
+async def verify_emailupdate(token: str):
+    expire_token = timedelta(minutes=10)
+    try:
+        email = decode_token(token)
+        new_token = create_email_token(email, expire_token)
+        return {"message": "Email verified", "verified_token": new_token}
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token") 
+    
+
+
+
+
+# complete email update endpoint
+@router.post("/complete_email_update", status_code=status.HTTP_200_OK)
+async def complete_email_update(
+    token: str, 
+    db: AsyncSession=Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+): 
+    # decode token to auto-extract verified email
+    try:
+        email = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    
+    current_user.email = email
+    # update and safe
+    await db.commit()
+    await db.refresh(current_user)
+    
+    return{"detail": "Email updated succesfully"}
+
+
+
+
 # create endpoint to delete user
 @router.delete("/delete_user", status_code=status.HTTP_200_OK)
 async def delete_user(
