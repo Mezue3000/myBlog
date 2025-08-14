@@ -1,13 +1,15 @@
 # import dependencies
 from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi_limiter.depends import RateLimiter
 from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
 from app.utility.email_auth import create_email_token, send_verification_email, decode_token
 from datetime import timedelta
-from app.utility.security import hash_password, verify_password, validate_password_strength
+from app.utility.security import get_identifier, hash_password, verify_password, validate_password_strength
 from app.utility.auth import get_current_user
 from sqlalchemy.exc import IntegrityError
 
@@ -16,14 +18,18 @@ from sqlalchemy.exc import IntegrityError
 
 # initialize router
 router = APIRouter(tags=["Users"], prefix="/users") 
+logger = logging.getLogger(__name__)
 
 
 # create endpoint to start registration by verifying email
-@router.post("/start_registration")
+@router.post(
+    "/start_registration",
+    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))]
+)
 async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends(get_db)):
     # check if email already exist
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    db_user = result.scalars().first() 
+    result = await db.exec(select(User).where(User.email == user_data.email))
+    db_user = result.first() 
     
     if db_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exist")
@@ -32,7 +38,10 @@ async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends
     token = create_email_token(user_data.email) 
     try:
         await send_verification_email(user_data.email, token, "verify-email", "registration")
-        return {"message": "Verification email sent, check your email to verify"}   
+        return {
+            "status": "Success",
+            "message": "Verification email sent. Please check your email"
+        }   
     except ConnectionRefusedError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
@@ -44,6 +53,7 @@ async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends
             detail="Gateway Timeout: Email sending timed out"
         )
     except Exception as e:
+        logger.exception("Unexpected error during email verification")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Internal Server Error: {str(e)}"
@@ -86,8 +96,8 @@ async def complete_registration(user: UserCreate, token: str, db: AsyncSession=D
     
     # check if username is already taken
     statement = select(User).where(User.username == user.username)
-    result = await db.execute(statement)
-    existing_user = result.scalars().first()
+    result = await db.exec(statement)
+    existing_user = result.first()
     
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exist")
@@ -131,11 +141,7 @@ async def get_username(current_user: User = Depends(get_current_user)):
 # create endpoint to retrieve user info
 @router.get("/read_user", response_model=UserBase) 
 async def read_user(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Retrieve the current user's info
-    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.scalars().first()
-    
-    return db_user
+    return current_user 
   
   
   
@@ -152,7 +158,7 @@ async def update_user(
     # Check for duplicate username
     if "username" in update_fields:
         stmt_username = select(User).where(User.username == update_fields["username"])
-        result = await db.execute(stmt_username)
+        result = await db.exec(stmt_username)
         existing_user = result.scalars().first()
     if existing_user and existing_user.user_id != current_user.user_id:
         raise HTTPException(
@@ -163,8 +169,8 @@ async def update_user(
     # Check for duplicate email
     if "email" in update_fields:
        stmt_email = select(User).where(User.email == update_fields["email"])
-       result = await db.execute(stmt_email)
-       existing_user = result.scalars().first()
+       result = await db.exec(stmt_email)
+       existing_user = result.first()
     if existing_user and existing_user.user_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -227,16 +233,21 @@ async def update_password(
      
      
     
+     
 # endpoint to update email
-@router.put("/update_email", status_code=status.HTTP_200_OK)
+@router.put(
+    "/update_email", 
+    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))],
+    status_code=status.HTTP_200_OK
+)
 async def update_email( 
     user: EmailUpdate, 
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     # check if new-email already exist
-    result = await db.execute(select(User).where(User.email == user.new_email))
-    existing_email = result.scalars().first()
+    result = await db.exec(select(User).where(User.email == user.new_email))
+    existing_email = result.first()
     
     if existing_email: 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exist")
@@ -249,7 +260,10 @@ async def update_email(
     token = create_email_token(user.new_email)
     try:
         await send_verification_email(user.new_email, token, "verify_email_update", "update")
-        return {"message": "Verification email sent, check your email to verify"}   
+        return {
+            "status": "Success",
+            "message": "Verification email sent. Please check your email"   
+        }   
     except ConnectionRefusedError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
@@ -261,6 +275,7 @@ async def update_email(
             detail="Gateway Timeout: Email sending timed out"
         )
     except Exception as e:
+        logger.exception("Unexpected error during email verification")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Internal Server Error: {str(e)}"
@@ -313,14 +328,8 @@ async def complete_email_update(
 async def delete_user(
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
-):
-    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
-    db_user = result.scalars().first()
-    
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    await db.delete(db_user)
+):  
+    await db.delete(current_user)
     await db.commit()
     
-    return {"detail": "User deleted successfully"} 
+    return {"detail": "User deleted successfully"}  

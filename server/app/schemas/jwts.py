@@ -12,12 +12,3 @@ class Token(SQLModel):
 # token data schema 
 class TokenData(SQLModel):
     username: Optional[str] = None
-    
-    
-    
-    
-
-
-
-
-

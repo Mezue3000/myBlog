@@ -3,7 +3,9 @@ from sqlmodel import SQLModel
 import asyncmy
 from dotenv import load_dotenv
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
 from app.models import User, Post, Comment
 import asyncio  
  
@@ -27,15 +29,14 @@ async_engine = create_async_engine(database_url, echo=True)
 
 
 
-
-# create async session factory
-AsyncSessionLocal = async_sessionmaker(bind=async_engine, class_=AsyncSession, autoflush=False)
+# SQLModel async session
+async_session = sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 
 # function to get session
 async def get_db():
-    async with AsyncSessionLocal() as session:
+    async with async_session() as session:
         yield session
         
 

@@ -86,8 +86,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise credential_exception 
     
     statement = select(User).where(User.username == token_data.username)
-    result = await db.execute(statement)
-    user = result.scalars().first()
+    result = await db.exec(statement)
+    user = result.first()
     
     if user is None:
         raise credential_exception

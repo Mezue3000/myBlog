@@ -1,12 +1,13 @@
 # import necessary dependencies
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi_limiter.depends import RateLimiter
 from app.schemas.jwts import Token
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
-from app.utility.security import verify_password, rate_limit
+from app.utility.security import get_identifier, verify_password
 from app.utility.auth import create_access_token
 
 
@@ -16,22 +17,20 @@ from app.utility.auth import create_access_token
 router = APIRouter(tags=["authenticate"])
 
 # create an endpoint to sign_in and grab token
-@router.post("/token", response_model=Token)
-async def login(
-    request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(), 
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(rate_limit)
-):
-    
+@router.post(
+    "/token", 
+    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))], 
+    response_model=Token
+)
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses "username" for both email and username   
     login_identifier = form_data.username.lower()
     password = form_data.password   
     
     # fetch user by email/username
     statement = select(User).where(or_(User.email == login_identifier, User.username == login_identifier))  
-    result = await db.execute(statement)
-    user = result.scalars().first()
+    result = await db.exec(statement)
+    user = result.first()
     
     # Validate user existence
     if not user:

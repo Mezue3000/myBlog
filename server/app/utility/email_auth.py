@@ -54,7 +54,7 @@ mail_config = ConnectionConfig(
     VALIDATE_CERTS=True
 )
 
-    
+
 
 
 # Asynchronous function to send a verification email
@@ -73,6 +73,8 @@ async def send_verification_email(
     # Construct the full verification link
     verification_link = f"http://localhost:8000/{link}?token={token}"
     html_content = f"""
+    <div style="font-family: Arial; padding: 20px; border: 1px solid; border-radius: 9px; text-align: center;">
+        <h1 style="font-weight: Bold; color: blue;">blog-map</h1>
         <h2>Verify your email address</h2>
         <hr/>
         <p>{message}</p>
@@ -87,6 +89,7 @@ async def send_verification_email(
             margin-top: 10px;
         ">Verify Email</a>
         <p>If you did not request this, please ignore this email.</p>
+    </div>
     """
 
     message = MessageSchema(
