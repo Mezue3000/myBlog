@@ -1,7 +1,9 @@
 # import dependencies
+import os
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from datetime import timedelta, datetime, timezone
-import jwt
+import jwt 
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -14,13 +16,21 @@ from app.models import User
 
 
 
+# get environ key
+key = os.getenv("SPIRIT_KEY")
+fernet = Fernet(key)
+
+
 
 # load private key from file
-with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem", "rb") as f:
-     PRIVATE_KEY = f.read()
+with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem.enc", "rb") as f:
+     ENCRYPTED_PRIVATE_KEY = f.read()
 
-private_key = serialization.load_pem_private_key(PRIVATE_KEY, password=None) 
 
+
+# decrypt the encrypted version
+DECRYPTED_PRIVATE_KEY = fernet.decrypt(ENCRYPTED_PRIVATE_KEY)
+private_key = serialization.load_pem_private_key(DECRYPTED_PRIVATE_KEY, password=None) 
 
 
 

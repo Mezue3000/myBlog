@@ -1,6 +1,8 @@
 # import dependencies
 from sqlmodel import SQLModel
 import asyncmy
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 import os
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -17,15 +19,19 @@ load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/util
 
 
 
+# get environ key
+key = os.getenv("SPIRIT_KEY").encode()
+fernet = Fernet(key)
+
+
 
 # get database environment variable
-database_url = os.getenv("DATABASE_URL")
-
-
+encrypted_database_url = os.getenv("ENCRYPTED_DATABASE_KEY")
+decrypted_database_url = fernet.decrypt(encrypted_database_url).decode()
 
 
 # create asynchronous engine
-async_engine = create_async_engine(database_url, echo=True)
+async_engine = create_async_engine(decrypted_database_url, echo=True)
 
 
 

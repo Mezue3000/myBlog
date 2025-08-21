@@ -1,5 +1,7 @@
 # import dependencies 
 import os, jwt
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
@@ -13,9 +15,21 @@ load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/util
 
 
 
+# get environ key
+key = os.getenv("SPIRIT_KEY").encode()
+fernet = Fernet(key)
+
+
+
+# get database environment variable
+encrypted_secret_key = os.getenv("ENCRYPTED_SECRET_KEY")
+decrypted_secret_key = fernet.decrypt(encrypted_secret_key).decode()
+
+
+
 
 # define jwt params
-email_secret_key = os.getenv("SECRET_KEY")
+email_secret_key = decrypted_secret_key
 algorithms = os.getenv("ALGORITHMS")
 email_token_expire_minutes = 15
 
@@ -37,8 +51,6 @@ def decode_token(token: str) -> str:
     payload = jwt.decode(token, email_secret_key, algorithms=[algorithms])
     return payload["sub"]
     
-
-
 
 
 # define fastapi mail config params 
@@ -75,7 +87,7 @@ async def send_verification_email(
     html_content = f"""
     <div style="font-family: Arial; padding: 20px; border: 1px solid; border-radius: 9px; text-align: center;">
         <h1 style="font-weight: Bold; color: blue;">blog-map</h1>
-        <h2>Verify your email address</h2>
+        <h2>Verify your email address</h2> 
         <hr/>
         <p>{message}</p>
         <a href="{verification_link}" style="
