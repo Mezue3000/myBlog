@@ -23,3 +23,11 @@ with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem.enc", "
     f.write(ENCRYPTED_PRIVATE_KEY)  
     
     
+
+
+# # encrypt/save sensitive data
+# secret_key = "ghVB^78.............."
+# ENCRYPTED_SECRET_KEY = fernet.encrypt(secret_key)
+
+# with open("C:\Users\HP\Desktop\Python-Notes\myBlog\server\app\utility\.env", "a") as f:
+#      f.write(f"ENCRYPTED_KEY={ENCRYPTED_SECRET_KEY.decode()}\n")
