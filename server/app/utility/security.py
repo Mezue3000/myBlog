@@ -4,6 +4,9 @@ import asyncio
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request
 import json
+from fastapi import Request, Depends
+from app.utility.auth import get_current_user  
+from app.models import User 
 
 
 
@@ -64,6 +67,22 @@ class CacheRequestBodyMiddleware(BaseHTTPMiddleware):
 async def get_identifier(request: Request):
     data = getattr(request.state, "body_data", {}) or {}
     identifier = data.get("email") or data.get("username") or request.client.host
+    return identifier
+
+
+
+# key function to identify authenticated users by id
+def get_identifier_factory(action: str):
+    async def identifier(request: Request, user: User = Depends(get_current_user)) -> str:
+        if user:
+            return f"user:{user.id}:{action}"
+        # fallback for unauthenticated requests
+        ip = request.headers.get("x-forwarded-for")
+        if ip:
+            ip = ip.split(",")[0].strip()
+        else:
+            ip = request.client.host or "unknown"
+        return f"ip:{ip}:{action}"
     return identifier
 
 

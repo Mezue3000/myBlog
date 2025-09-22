@@ -1,22 +1,24 @@
 # import dependencies
+import os
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from fastapi_limiter import FastAPILimiter
 from contextlib import asynccontextmanager
 from app.utility.security import CacheRequestBodyMiddleware
-from app.cruds import users, login
+from app.cruds import users, login     
 
 
 
 # initialize redis
-redis = Redis(host="localhost", port=6380, db=0, decode_responses=True)
+password = os.getenv("PASSWORD")
+redis = Redis(host="localhost", port=6380, db=0, password=password, decode_responses=True)
 
 
 
 # define lifespan function
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    await FastAPILimiter.init(redis)
+async def lifespan(app: FastAPI): 
+    await FastAPILimiter.init(redis)  
     yield
     await redis.close()
 
@@ -29,7 +31,7 @@ app = FastAPI(lifespan=lifespan)
 
 # Add middleware before routes
 app.add_middleware(CacheRequestBodyMiddleware)
-
+ 
 
 
 # include all routers

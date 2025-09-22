@@ -37,16 +37,16 @@ async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends
     # generate token
     token = create_email_token(user_data.email) 
     try:
-        await send_verification_email(user_data.email, token, "verify-email", "registration")
+        await send_verification_email(user_data.email, token, "complete_registration", "registration")
         return {
             "status": "Success",
             "message": "Verification email sent. Please check your email"
-        }   
+        }    
     except ConnectionRefusedError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
             detail="Service Unavailable: Unable to connect to email server"
-        )
+        ) 
     except TimeoutError:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, 
@@ -58,22 +58,6 @@ async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Internal Server Error: {str(e)}"
         )
-
-
-
-
-
-# create endpoint to verify email
-@router.get("/verify-email")
-async def verify_email(token: str):
-    expire_token = timedelta(minutes=30)
-    try:
-        email = decode_token(token)
-        new_token = create_email_token(email, expire_token)
-        return {"message": "Email verified", "verified_token": new_token}
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
-
 
 
 
@@ -106,7 +90,7 @@ async def complete_registration(user: UserCreate, token: str, db: AsyncSession=D
         
     # create new user with hash password function
     new_user = User(
-        email= email,
+        email=email,
         first_name=user.first_name.lower(),
         last_name=user.last_name.lower(),
         username=user.username.lower(),
@@ -159,7 +143,7 @@ async def update_user(
     if "username" in update_fields:
         stmt_username = select(User).where(User.username == update_fields["username"])
         result = await db.exec(stmt_username)
-        existing_user = result.scalars().first()
+        existing_user = result.first() 
     if existing_user and existing_user.user_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -259,7 +243,7 @@ async def update_email(
     # generate token
     token = create_email_token(user.new_email)
     try:
-        await send_verification_email(user.new_email, token, "verify_email_update", "update")
+        await send_verification_email(user.new_email, token, "complete_email_update", "update")
         return {
             "status": "Success",
             "message": "Verification email sent. Please check your email"   
@@ -280,22 +264,6 @@ async def update_email(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Internal Server Error: {str(e)}"
         )
-
-   
-    
-    
-    
-# create endpoint to verify new email
-@router.get("/verify_email_update")
-async def verify_emailupdate(token: str):
-    expire_token = timedelta(minutes=10)
-    try:
-        email = decode_token(token)
-        new_token = create_email_token(email, expire_token)
-        return {"message": "Email verified", "verified_token": new_token}
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token") 
-    
 
 
 

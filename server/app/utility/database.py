@@ -26,13 +26,13 @@ fernet = Fernet(key)
 
 
 # get database environment variable
-encrypted_database_url = os.getenv("ENCRYPTED_DATABASE_KEY")
-decrypted_database_url = fernet.decrypt(encrypted_database_url).decode()
-
+# encrypted_database_url = os.getenv("ENCRYPTED_DATABASE_KEY")
+# decrypted_database_url = fernet.decrypt(encrypted_database_url).decode()
+DATABASE_URL = os.getenv("DATABASE_URL") 
 
 
 # create asynchronous engine  
-async_engine = create_async_engine(decrypted_database_url, echo=True)
+async_engine = create_async_engine(DATABASE_URL, echo=True)
 
 
 

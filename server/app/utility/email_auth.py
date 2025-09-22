@@ -5,6 +5,8 @@ from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
+from fastapi import HTTPException, status
+from jwt import ExpiredSignatureError, PyJWKError
 from fastapi_mail import FastMail, ConnectionConfig, MessageSchema
 
 
@@ -39,7 +41,7 @@ email_token_expire_minutes = 15
 # function to create email access token
 def create_email_token(email: EmailStr, expire_delta: timedelta = None) -> str:
     expire = datetime.now(timezone.utc) + (expire_delta or timedelta(minutes=email_token_expire_minutes))
-    data = {"sub": email, "exp": expire}
+    data = {"sub": str(email), "scope":"email_verification", "exp": expire}
     encoded_jwt = jwt.encode(data, email_secret_key, algorithm=algorithms)
     return encoded_jwt
 
@@ -48,9 +50,17 @@ def create_email_token(email: EmailStr, expire_delta: timedelta = None) -> str:
 
 # function to decode verified token
 def decode_token(token: str) -> str:
-    payload = jwt.decode(token, email_secret_key, algorithms=[algorithms])
-    return payload["sub"]
+    try:
+        payload = jwt.decode(token, email_secret_key, algorithms=[algorithms])
+        if payload.get("scope") != "email_verification":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token scope")
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.PyJWKError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     
+
 
 
 # define fastapi mail config params 
@@ -82,7 +92,7 @@ async def send_verification_email(
         message = "You need to verify your new email address to complete your update. Click the button below to verify your new email address"
     else:
         message = "please verify your email"
-    # Construct the full verification link
+    # verification link(will later change to f"http://localhost:3000/{frontend_path}?token={token}")
     verification_link = f"http://localhost:8000/{link}?token={token}"
     html_content = f"""
     <div style="font-family: Arial; padding: 20px; border: 1px solid; border-radius: 9px; text-align: center;">
@@ -112,4 +122,5 @@ async def send_verification_email(
     )
 
     fast_mail = FastMail(mail_config)
-    await fast_mail.send_message(message)
+    await fast_mail.send_message(message) 
+    
