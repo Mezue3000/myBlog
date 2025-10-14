@@ -4,6 +4,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from datetime import timedelta, datetime, timezone
 import jwt 
+from redis.asyncio import Redis
+import secrets
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -44,20 +46,51 @@ public_key = serialization.load_pem_public_key(PUBLIC_KEY)
 
 # define jwt params
 ALGORITHM = "ES256"
-ACCESS_TOKEN_EXPIRE_HOURS = 3
+ACCESS_TOKEN_EXPIRE_MINUTES = 15 
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+
+# set up redis client
+password = os.getenv("PASSWORD")
+redis = Redis(host="localhost", port=6380, db=0, password=password, decode_responses=True)
 
 
 
 # function to create jwt access token 
-def create_access_token(data: dict, expire_delta: timedelta=None):
+def create_access_token(data: dict, expire_delta: timedelta=None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expire_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
+    expire = datetime.now(timezone.utc) + (expire_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, private_key, algorithm=ALGORITHM) 
     return encoded_jwt
     
     
+
+# function to create jwt refresh token
+async def create_refresh_token(user_id: str) -> str: 
+    refresh_token = secrets.token_urlsafe(48)
+    expire = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    # save in redis
+    await redis.setex(f"refresh:{refresh_token}", int(expire.total_seconds()), user_id)
+    return refresh_token
+ 
+
+
+# function to rotate/invalidate old refresh token
+async def rotate_refresh_token(old_token: str) -> Optional[str]:
+    user_id = await redis.get(f"refresh: {old_token}")
+    if not user_id:
+        return None
     
+    # invalidate old_token
+    await redis.delete(f"refresh: {old_token}")
+    
+    # issue new refresh token
+    return await create_refresh_token(user_id)
+
+    
+
 # testing the function    
 # if __name__ == "__main__":
 #     data = {"user_id": 1,}

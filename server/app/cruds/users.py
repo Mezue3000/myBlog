@@ -11,7 +11,7 @@ from app.utility.email_auth import create_email_token, send_verification_email, 
 from datetime import timedelta
 from app.utility.security import get_identifier, hash_password, verify_password, validate_password_strength
 from app.utility.auth import get_current_user
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError  
 
 
 
@@ -301,3 +301,21 @@ async def delete_user(
     await db.commit()
     
     return {"detail": "User deleted successfully"}  
+
+
+
+
+# create endpoint for users logout
+# @router.post("/logout")
+# async def logout(request: Request, response: Response, _=Depends(verify_csrf)):
+#     refresh_token = request.cookies.get("refresh_token")
+#     # delete in Redis (if exists)
+#     if refresh_token:
+#         await redis.delete(f"refresh:{refresh_token}")
+
+#     # Clear cookies
+#     response.delete_cookie("access_token")
+#     response.delete_cookie("refresh_token")
+#     response.delete_cookie("csrf_token")
+
+#     return {"message": "Logged out"}

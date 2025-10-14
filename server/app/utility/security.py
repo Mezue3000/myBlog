@@ -1,5 +1,6 @@
 # import dependencies
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+# from passlib.context import CryptContext
 import asyncio
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request
@@ -11,22 +12,23 @@ from app.models import User
 
 
 
-# initialize crypt context
-pwd_context = CryptContext(schemes=["argon2"], default="argon2")
+# initialize hash function
+password_hash = PasswordHash.recommended()
+# pwd_context = CryptContext(schemes=["argon2"], default="argon2")
 
 
 
 
 # function to hash password
 async def hash_password(password: str) -> str:
-    return await asyncio.to_thread(pwd_context.hash, password)
+    return await asyncio.to_thread(password_hash.hash, password)
 
 
 
 
 # function to verify password
 async def verify_password(plain_password: str, hash_password: str) -> bool:
-    return await asyncio.to_thread(pwd_context.verify, plain_password, hash_password)
+    return await asyncio.to_thread(password_hash.verify, plain_password, hash_password)
 
 
 

@@ -21,7 +21,7 @@ class UserBase(SQLModel):
 # schema for creating user
 class UserCreate(UserBase):
     password: str = Field(min_length=12)
-    confirm_password: str = Field(min_length=12)
+    confirm_password: str = Field(min_length=12) 
 
 
 
