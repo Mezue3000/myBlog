@@ -9,10 +9,6 @@ from app.cruds import users, login
 
 
 
-
-redis_client: Redis | None = None
-
-
 # fetch redis credentials
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
@@ -20,6 +16,14 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 REDIS_USER = os.getenv("REDIS_USER", "default")
 
 REDIS_URL = f"rediss://{REDIS_USER}:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+
+if not REDIS_URL:
+    raise ValueError("REDIS_CLOUD_URL environment variable is not set")
+
+
+
+# Global Redis client (initialized in lifespan)
+redis_client: Redis | None = None
 
 
 
