@@ -9,18 +9,43 @@ from app.cruds import users, login
 
 
 
+
+redis_client: Redis | None = None
+
+
+# fetch redis credentials
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+REDIS_USER = os.getenv("REDIS_USER", "default")
+
+REDIS_URL = f"rediss://{REDIS_USER}:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+
+
+
 # initialize redis
-password = os.getenv("PASSWORD")
-redis = Redis(host="localhost", port=6380, db=0, password=password, decode_responses=True)
-
-
-
-# define lifespan function
 @asynccontextmanager
-async def lifespan(app: FastAPI): 
-    await FastAPILimiter.init(redis)  
-    yield
-    await redis.close()
+async def lifespan(app: FastAPI):
+    global redis_client
+
+    # initialize Redis client 
+    redis_client = Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,        
+        socket_timeout=5,
+        socket_connect_timeout=5,
+    )
+
+
+
+
+ # Initialize FastAPI Limiter
+    await FastAPILimiter.init(redis_client)
+
+    try:
+        yield
+    finally:
+        await redis_client.close()
 
 
 

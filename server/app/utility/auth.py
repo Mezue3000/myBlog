@@ -53,13 +53,13 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 # set up redis client
 password = os.getenv("PASSWORD")
-redis = Redis(host="localhost", port=6380, db=0, password=password, decode_responses=True)
+redis = Redis(host="localhost", port=6380, db=0, password=password, decode_responses=True) 
 
 
-
+ 
 # function to create jwt access token 
 def create_access_token(data: dict, expire_delta: timedelta=None) -> str:
-    to_encode = data.copy()
+    to_encode = data.copy() 
     expire = datetime.now(timezone.utc) + (expire_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, private_key, algorithm=ALGORITHM) 
@@ -70,9 +70,17 @@ def create_access_token(data: dict, expire_delta: timedelta=None) -> str:
 # function to create jwt refresh token
 async def create_refresh_token(user_id: str) -> str: 
     refresh_token = secrets.token_urlsafe(48)
+    
+    # Compute ttl
     expire = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    # save in redis
-    await redis.setex(f"refresh:{refresh_token}", int(expire.total_seconds()), user_id)
+    ttl = int(expire.total_seconds())
+
+    # Redis key
+    key = f"refresh:{refresh_token}"
+
+    # Store in redis
+    await redis.setex(key, ttl, user_id)
+    
     return refresh_token
  
 
@@ -89,15 +97,17 @@ async def rotate_refresh_token(old_token: str) -> Optional[str]:
     # issue new refresh token
     return await create_refresh_token(user_id)
 
-    
+
+
 
 # testing the function    
 # if __name__ == "__main__":
 #     data = {"user_id": 1,}
 #     expire_delta = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS) 
-#     toky = create_access_token(data, expire_delta)
+#     toky = create_access_token(data, expire_delta) 
 #     deco =jwt.decode(toky, public_key, algorithms=ALGORITHM)
 #     print(deco) 
+
 
 
 

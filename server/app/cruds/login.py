@@ -12,6 +12,7 @@ from app.models import User
 from app.utility.security import get_identifier, verify_password
 from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 import secrets
+from redis.asyncio import Redis
 from app.main import redis, password
 
 
@@ -55,7 +56,7 @@ async def login(
             detail="Invalid email/username or password"
         )
     
-    # generate jwt token 
+    # generate jwt tokens
     access_token = create_access_token(data = {"sub": user.username})
     refresh_token = await create_refresh_token(data = {"sub": user.username})
     
@@ -71,7 +72,6 @@ async def login(
     )
     
     response.set_cookie(
-    
         key="refresh_token",
         value=refresh_token,
         httponly=True,

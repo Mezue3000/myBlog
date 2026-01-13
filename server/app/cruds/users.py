@@ -2,12 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
 from fastapi_limiter.depends import RateLimiter
+from pydantic import EmailStr
 from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
-from app.utility.email_auth import create_email_token, send_verification_email, decode_token
+from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
 from datetime import timedelta
 from app.utility.security import get_identifier, hash_password, verify_password, validate_password_strength
 from app.utility.auth import get_current_user
@@ -27,88 +28,116 @@ logger = logging.getLogger(__name__)
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))]
 )
 async def start_registration(user_data: EmailRequest, db: AsyncSession = Depends(get_db)):
-    # check if email already exist
-    result = await db.exec(select(User).where(User.email == user_data.email))
-    db_user = result.first() 
     
-    if db_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exist")
-    
-    # generate token
-    token = create_email_token(user_data.email) 
+    # check if email already exists
     try:
-        await send_verification_email(user_data.email, token, "complete_registration", "registration")
-        return {
-            "status": "Success",
-            "message": "Verification email sent. Please check your email"
-        }    
-    except ConnectionRefusedError:
+        result = await db.exec(select(User).where(User.email == user_data.email))
+        existing_user = result.first()
+    except Exception:
+        logger.exception("Database failure while checking existing email.")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
-            detail="Service Unavailable: Unable to connect to email server"
-        ) 
-    except TimeoutError:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT, 
-            detail="Gateway Timeout: Email sending timed out"
-        )
-    except Exception as e:
-        logger.exception("Unexpected error during email verification")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail=f"Internal Server Error: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while checking email"
         )
 
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists")
 
+    # generate OTP
+    otp = await create_email_otp(email=user_data.email, scope="registration")
+
+    # send verification email
+    await send_verification_otp_email(email=user_data.email, otp=otp, scope="registration")
+
+    # final response
+    return {
+        "status": "Success",
+        "message": "Verification code sent to your email"
+    }
+
+ 
 
 
 # create endpoint to complete registration
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
 @router.post("/complete_registration", response_model=UserRead)
-async def complete_registration(user: UserCreate, token: str, db: AsyncSession=Depends(get_db)): 
-    # decode token to auto-extract verified email
+async def complete_registration(
+    user: UserCreate,
+    email: EmailStr,
+    otp_code: int,
+    db: AsyncSession = Depends(get_db)
+):
+
+    logger.info(f"Attempting to complete registration for {email}")
+
+    # verify OTP (email_verification scope)
     try:
-        email = decode_token(token)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    
-    # validate password
-    validate_password_strength(user.password)
-    
-    # validate comfirm password field
+        await verify_email_otp(email=email, scope="register", otp_code=otp_code)
+        logger.info(f"OTP verification succeeded for {email}")
+    except HTTPException as e:
+        logger.warning(f"OTP verification failed for {email}: {e.detail}")
+        raise e
+
+    # validate password strength
+    try:
+        validate_password_strength(user.password)
+    except Exception as e:
+        logger.warning(f"Password validation failed for {email}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # confirm password match
     if user.password != user.confirm_password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password do not match")
-    
-    # check if username is already taken
-    statement = select(User).where(User.username == user.username)
+        logger.warning(f"Password mismatch for {email}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match"
+        )
+
+    # ensure username is not taken
+    statement = select(User).where(User.username == user.username.lower())
     result = await db.exec(statement)
-    existing_user = result.first()
-    
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exist")
-    
+    if result.first():
+        logger.warning(f"Username '{user.username}' already exists for email {email}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+
+    # Hash password
     hashed_password = await hash_password(user.password)
-        
-    # create new user with hash password function
+
+    # Create the user
     new_user = User(
-        email=email,
+        email=email.lower(),
         first_name=user.first_name.lower(),
         last_name=user.last_name.lower(),
         username=user.username.lower(),
         biography=user.biography,
         password_hash=hashed_password,
         country=user.country.lower(),
-        city=user.city.lower()  
+        city=user.city.lower()
     )
+
     try:
-       db.add(new_user)
-       await db.commit()
-       await db.refresh(new_user)
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        logger.info(f"User created successfully: {email}")
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists")
-    
-    return UserRead.model_validate(new_user)
+        logger.error(f"Database integrity error during user registration: {email}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or email already exists"
+        )
 
+    return UserRead.model_validate(new_user)
 
 
 
@@ -236,34 +265,21 @@ async def update_email(
     if existing_email: 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exist")
     
-    # validate password
+    # validate password 
     if not await verify_password(user.password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password incorrect")
     
-    # generate token
-    token = create_email_token(user.new_email)
-    try:
-        await send_verification_email(user.new_email, token, "complete_email_update", "update")
-        return {
-            "status": "Success",
-            "message": "Verification email sent. Please check your email"   
-        }   
-    except ConnectionRefusedError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
-            detail="Service Unavailable: Unable to connect to email server"
-        )
-    except TimeoutError:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT, 
-            detail="Gateway Timeout: Email sending timed out"
-        )
-    except Exception as e:
-        logger.exception("Unexpected error during email verification")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail=f"Internal Server Error: {str(e)}"
-        )
+    # generate OTP
+    otp = await create_email_otp(email=user.email, scope="update")
+
+    # send verification email
+    await send_verification_otp_email(email=user.email, otp=otp, scope="update")
+
+    # final response
+    return {
+        "status": "Success",
+        "message": "Verification code sent to your email"
+    }
 
 
 
@@ -271,13 +287,14 @@ async def update_email(
 # complete email update endpoint
 @router.post("/complete_email_update", status_code=status.HTTP_200_OK)
 async def complete_email_update(
-    token: str, 
+    email: EmailStr,
+    otp_code: int, 
     db: AsyncSession=Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ): 
-    # decode token to auto-extract verified email
-    try:
-        email = decode_token(token)
+    # verify otp
+    try: 
+        email = verify_email_otp(email=email, scope="update", otp_code=otp_code)
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     
@@ -286,7 +303,7 @@ async def complete_email_update(
     await db.commit()
     await db.refresh(current_user)
     
-    return{"detail": "Email updated succesfully"}
+    return{"detail": "Email updated succesfully"} 
 
 
 
