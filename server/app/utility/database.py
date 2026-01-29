@@ -31,6 +31,7 @@ fernet = Fernet(key)
 DATABASE_URL = os.getenv("DATABASE_URL") 
 
 
+
 # create asynchronous engine  
 async_engine = create_async_engine(DATABASE_URL, echo=True)
 

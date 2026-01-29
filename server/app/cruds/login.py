@@ -1,8 +1,6 @@
 # import necessary dependencies
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response 
 from fastapi_limiter.depends import RateLimiter
-from fastapi_csrf_protect import CsrfProtect
-from app.schemas.jwts import get_csrf_config
 from app.schemas.jwts import Token
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
@@ -10,10 +8,9 @@ from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
 from app.utility.security import get_identifier, verify_password
-from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure
 import secrets
-from redis.asyncio import Redis
-from app.main import redis, password
+from app.cores.redis import redis_client
 
 
 
@@ -29,12 +26,11 @@ router = APIRouter(tags=["authenticate"])
 )
 async def login(
     response: Response,
-    csfr_protect: CsrfProtect = Depends(),
     form_data: OAuth2PasswordRequestForm = Depends(), 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     # OAuth2PasswordRequestForm uses "username" for both email and username   
-    login_identifier = form_data.username.lower()
+    login_identifier = form_data.username.lower().strip()
     password = form_data.password   
     
     # fetch user by email/username
@@ -57,78 +53,48 @@ async def login(
         )
     
     # generate jwt tokens
-    access_token = create_access_token(data = {"sub": user.username})
-    refresh_token = await create_refresh_token(data = {"sub": user.username})
+    access_token = create_access_token(subject=user.username)
+    refresh_token = create_refresh_token(user_id=user.username)
     
-    # set all cookies 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True, 
-        secure=True,
-        samesite="Lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        path="/"
-    )
+    # # generate csrf token (double-submit)
+    # csrf_token = secrets.token_urlsafe(32)
     
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path="/"
-    )
-    
-    # generate csrf token
-    csrf_token = csfr_protect.generate_csrf()   
-    response.headers["X-CSRF-Token"] = csrf_token
-    
+    # set cookies
+    set_auth_cookies(response, access_token, refresh_token)
+     
     return {"access_token": access_token, "token_type": "bearer"}  
+
 
 
 
 # create refresh token endpoint
 @router.post("/refresh_token")
-async def refresh_token(request: Request,  response: Response):
-    old_refresh_token = request.cookies.get(refresh_token)
+async def refresh_token(request: Request, response: Response):
+    # Get the old refresh token from the browser cookie
+    old_refresh_token = request.cookies.get("refresh_token")
+    
     if not old_refresh_token:
+       await log_refresh_failure(request, reason="missing_cookie")
        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
     
     # invalidate old refresh token(applicable for one-device-only policy)
     new_refresh_token = await rotate_refresh_token(old_refresh_token)
+    
     if not new_refresh_token:
+        await log_refresh_failure(request, reason="reuse_or_invalid")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     
     # get user id from Redis (new token stored by create_refresh_token)
-    user_id = await redis.get(f"refresh:{new_refresh_token}")
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    
-    # issue new token 
-    new_access_token = create_access_token({"sub": user_id})
-    
-    # set cookies 
-    response.set_cookie(
-        key="new_access_token",
-        value=new_access_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        path="/"
-    )
-     
-    response.set_cookie(
-        key="new_refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path="/"
-    )
-    
-    return {"access_token": "rotated"}
-    
+    data = await redis_client.hgetall(f"refresh:{new_refresh_token}")
+
+    if not data:
+        await log_refresh_failure(request, reason="redis_miss")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+    user_id = data[b"user_id"].decode()
+
+    new_access_token = create_access_token(subject=user_id)
+
+    set_auth_cookies(response, new_access_token, new_refresh_token)
+
+    return {"detail": "Token refreshed"}

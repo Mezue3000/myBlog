@@ -1,68 +1,68 @@
 # import dependencies
-import os
-from fastapi import FastAPI
-from redis.asyncio import Redis
-from fastapi_limiter import FastAPILimiter
+from dotenv import load_dotenv
+from app.utility.logging import setup_logging
 from contextlib import asynccontextmanager
-from app.utility.security import CacheRequestBodyMiddleware
-from app.cruds import users, login     
+from fastapi import FastAPI, HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi_limiter import FastAPILimiter
+from app.cores.redis import redis_client
+from app.cores.middleware import(
+    request_id_middleware,
+    CacheRequestBodyMiddleware, 
+    SecurityHeadersMiddleware, 
+    CustomCORSMiddleware
+)
+from app.cores.exceptions import (
+    http_exception_handler,
+    starlette_http_exception_handler,
+    unhandled_exception_handler,
+)
+from app.cruds import users, login
 
 
 
-# fetch redis credentials
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = os.getenv("REDIS_PORT")
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
-REDIS_USER = os.getenv("REDIS_USER", "default")
 
-REDIS_URL = f"rediss://{REDIS_USER}:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
-
-if not REDIS_URL:
-    raise ValueError("REDIS_CLOUD_URL environment variable is not set")
+# load environment variable
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
 
-# Global Redis client (initialized in lifespan)
-redis_client: Redis | None = None
+setup_logging()
 
 
 
-# initialize redis
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_client
-
-    # initialize Redis client 
-    redis_client = Redis.from_url(
-        REDIS_URL,
-        decode_responses=True,        
-        socket_timeout=5,
-        socket_connect_timeout=5,
-    )
-
-
-
-
- # Initialize FastAPI Limiter
     await FastAPILimiter.init(redis_client)
-
     try:
         yield
     finally:
-        await redis_client.close()
-
-
-
-# initialize fastapi app with lifespan
+        if redis_client:
+            await redis_client.close()
+        
+        
+        
+        
+# initialize fastapi
 app = FastAPI(lifespan=lifespan)
 
- 
 
-# Add middleware before routes
+
+# add exception handlers
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+
+
+# add middlewares
+app.add_middleware(CustomCORSMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.middleware("http")(request_id_middleware)
 app.add_middleware(CacheRequestBodyMiddleware)
- 
 
 
-# include all routers
+
+# include routers
 app.include_router(users.router)
 app.include_router(login.router)

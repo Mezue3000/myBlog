@@ -1,21 +1,25 @@
 # import dependencies 
-import os, jwt
+import os, jwt, logging
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
+from typing import Optional
 import json
 import pyotp
+import httpx
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status
-from redis.asyncio import Redis
-from app.main import redis, password
+from app.cores.redis import redis_client
 from jwt import ExpiredSignatureError, PyJWKError
-from fastapi_mail import FastMail, ConnectionConfig, MessageSchema
 
 
 
 
+# instantiate logging
+logger = logging.getLogger(__name__)
+
+ 
 # #  load environment variable
 # load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
@@ -41,159 +45,171 @@ from fastapi_mail import FastMail, ConnectionConfig, MessageSchema
 
 
 
-
 # function to create email otp
 EMAIL_OTP_EXPIRE_MINUTES = 10
+EMAIL_OTP_COOLDOWN_SECONDS = 60
 
-async def create_email_otp(email: EmailStr, scope: str, expire_delta: timedelta = None) -> str:
+async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[timedelta] = None) -> str:
     
+    email = email.lower().strip()
+
+    expire_time = expire_delta or timedelta(minutes=EMAIL_OTP_EXPIRE_MINUTES)
+    redis_key = f"email_otp:{scope}:{email}"
+
     try:
-        expire_time = expire_delta or timedelta(minutes=EMAIL_OTP_EXPIRE_MINUTES)
+        existing = await redis_client.get(redis_key)
 
-        # generate a unique secret per OTP session
+        # OTP exists → check cooldown
+        if existing:
+            payload = json.loads(existing)
+
+            created_at = datetime.fromisoformat(payload["created_at"])
+            now = datetime.now(timezone.utc)
+
+            # within cooldown → return same OTP
+            if (now - created_at).total_seconds() < EMAIL_OTP_COOLDOWN_SECONDS:
+                totp = pyotp.TOTP(
+                    payload["secret"],
+                    interval=payload["interval"],
+                )
+                return totp.now().zfill(6)
+
+        # generate new OTP
         secret = pyotp.random_base32()
-
-        # create TOTP generator
-        totp = pyotp.TOTP(secret, interval=int(expire_time.total_seconds()))
-
-        # generate 6-digit OTP
-        otp_code = totp.now()
-
-        # redis key includes scope
-        redis_key = f"email_otp:{scope}:{email}"
-
-        # clear previous OTP
-        await redis.delete(redis_key)
-
-        # store secret + expiry; OTP is regenerated via TOTP
+        interval = int(expire_time.total_seconds())
+        totp = pyotp.TOTP(secret, interval=interval)
+        otp_code = totp.now().zfill(6)
+        
         payload = {
             "secret": secret,
-            "expires_at": (datetime.now(timezone.utc) + expire_time).isoformat()
+            "interval": interval,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + expire_time).isoformat(),
         }
 
-        ttl_seconds = int(expire_time.total_seconds())
-        await redis.setex(redis_key, ttl_seconds, json.dumps(payload))
+        await redis_client.setex(
+            redis_key,
+            interval,
+            json.dumps(payload),
+        )
 
         return otp_code
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate OTP: {str(e)}"
+            detail="Failed to generate OTP",
         )
 
 
  
 
 # function to verify email otp
-async def verify_email_otp(email: EmailStr, scope: str, otp_code: int) -> str:
-    redis_key = f"email_otp:{scope}:{email}"
+async def verify_email_otp(otp_code: str, scope: str) -> str:
+    # verifies OTP and returns the verified email.
+    pattern = f"email_otp:{scope}:*"
+    keys = await redis_client.keys(pattern)
 
-    data = await redis.get(redis_key)
-
-    if not data:
+    if not keys:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP expired or not found. Please request a new one."
+            detail="OTP expired or invalid",
         )
 
-    payload = json.loads(data)
-    secret = payload["secret"]
-    expires_at = datetime.fromisoformat(payload["expires_at"])
-    stored_email = email  # email already tied to key  
+    now = datetime.now(timezone.utc)
 
-    # Check expiry
-    if datetime.now(timezone.utc) > expires_at:
-        await redis.delete(redis_key)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP has expired. Please request a new one."
-        )
+    for key in keys:
+        raw = await redis_client.get(key)
+        if not raw:
+            continue
 
-    # Verify OTP
-    totp = pyotp.TOTP(secret, interval=int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+        payload = json.loads(raw)
+        expires_at = datetime.fromisoformat(payload["expires_at"])
 
-    if not totp.verify(otp_code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP. Please try again."
-        )
+        if now > expires_at:
+            await redis_client.delete(key)
+            continue
 
-    # Delete OTP after success
-    await redis.delete(redis_key)
+        totp = pyotp.TOTP(payload["secret"], interval=payload["interval"])
 
-    return stored_email
+        if totp.verify(str(otp_code), valid_window=1):
+            email = key.split(":")[-1]
 
-       
+            # single-use
+            await redis_client.delete(key)
 
+            return email
 
-# define fastapi mail config params 
-mail_config = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=587,
-    MAIL_SERVER=(os.getenv("MAIL_SERVER")), 
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
-)
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired OTP",
+    )
 
 
 
 
-# function to send a verification OTP email
+# fetch email credentials
+MAIL_API_KEY = os.getenv("MAIL_API_KEY")
+MAIL_FROM = os.getenv("MAIL_FROM")
+
+if not MAIL_API_KEY or not MAIL_FROM:
+    raise RuntimeError("Missing RESEND_API_KEY or MAIL_FROM")
+
+
+RESEND_API_URL = "https://api.resend.com/emails"
+
+
+
+# function to send verification OTP email
 async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
-    
-    # message based on scope 
+    # message per scope
     if scope == "registration":
         user_message = (
-            "Thank you for signing up! To complete your registration, please verify your email "
-            "address by entering this code on our website:"
+            "Thank you for signing up! To complete your registration, "
+            "please verify your email address by entering this code on our website:"
         )
         subject = "BlogMap Verification Email - Registration"
         endnote = "If you did not request this, please ignore this email."
-        
+
     elif scope == "2FA":
         user_message = (
-            "We noticed a log-in attempt on your account. If that was you, please enter this code below:"
+            "We noticed a login attempt on your account. "
+            "If that was you, please enter this code below:"
         )
         subject = "BlogMap Login Verification Code"
         endnote = (
-            "If you did not try to access your BlogMap account, please reset your password immediately "
-            "and review your account activity."
+            "If you did not try to access your BlogMap account, "
+            "please reset your password immediately."
         )
-        
+
     elif scope == "update":
         user_message = (
-            f"You have requested to update your email address to {email}. To confirm this change, "
-            "please enter this code on our website:"
- 
+            f"You requested to update your email address to {email}. "
+            "To confirm this change, please enter this code:"
         )
         subject = "BlogMap Email Change Confirmation"
-        endnote = "If you did not request this change, please contact our support team immediately."
-        
+        endnote = "If you did not request this change, contact support immediately."
+
     elif scope == "reset":
         user_message = (
-            "You have requested to reset your password. To proceed, please enter this code on our website:"
+            "You requested to reset your password. "
+            "Please enter this code to proceed:"
         )
-        subject = "BlogMap Password Reset Code"
-        endnote = "If you did not request this password reset, please ignore this email."
-        
+        subject = "BlogMap Password Reset Code "
+        endnote = "If you did not request this, please ignore this email."
+
     else:
         user_message = "Use the verification code below."
         subject = "BlogMap Email Verification Code"
         endnote = "If you did not request this, please ignore this email."
-    
 
-    # HTML email content
+    # html setup
     html_content = f"""
-    <div style="font-family: Arial; padding: 20px; border: 1px solid #ddd; border-radius: 12px; text-align: center;"> 
-        <h1 style="font-weight: bold; color: #333333; font-family: Arial black;">BlogMap</h1>
-        
-        <p>Hi {email},</p> 
-        <br/>
+    <div style="font-family: Arial; padding: 20px; border: 1px solid #ddd;
+                border-radius: 12px; text-align: center;">
+        <h1 style="font-weight: bold;">BlogMap</h1>
+
+        <p>Hi {email},</p>
         <p>{user_message}</p>
 
         <div style="
@@ -208,91 +224,52 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         ">
             {otp}
         </div>
-        
+
         <p>This code will expire in 7 minutes.</p>
         <p>{endnote}</p>
 
-        <hr style="margin-top: 30px;"/>
-        <p>Best regards,</p>
-        <p>BlogMap Inc</p>
+        <hr/>
+        <p>Best regards,<br/>BlogMap Inc</p>
     </div>
     """
 
-    message = MessageSchema(
-        subject=subject,
-        recipients=[email],
-        body=html_content,
-        subtype="html"
-    )
+    payload = {
+        "from": MAIL_FROM,
+        "to": [email],
+        "subject": subject,
+        "html": html_content,
+    }
 
-    fast_mail = FastMail(mail_config)
+    headers = {
+        "Authorization": f"Bearer {MAIL_API_KEY}",
+        "Content-Type": "application/json",
+    }
 
+    # send email
     try:
-        await fast_mail.send_message(message)
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                RESEND_API_URL,
+                json=payload,
+                headers=headers,
+            )
 
-    except ConnectionRefusedError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to connect to email server."
+        response.raise_for_status()  
+
+        logger.info(f"OTP email sent successfully to {email} (scope: {scope})")
+            
+
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"Resend API error sending OTP to {email}: {e.response.status_code} - {e.response.text}",
+            exc_info=True
         )
 
-    except TimeoutError:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Email sending timed out."
-        )
+    except httpx.TimeoutException:
+        logger.error(f"Timeout sending OTP email to {email}", exc_info=True)
+
+    except httpx.RequestError as e:
+        logger.error(f"Network error sending OTP to {email}: {str(e)}", exc_info=True)
 
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send verification email: {str(e)}"
-        )
-
-
-
-
-
-# async def send_verification_email(
-#     email: EmailStr, 
-#     token: str,
-#     link: str,
-#     template_type: str
-# ):
-#     if template_type == "registration":
-#         message = "You need to verify your email address to complete your registration. Click the button below to verify your email address"
-#     elif template_type == "update":
-#         message = "You need to verify your new email address to complete your update. Click the button below to verify your new email address"
-#     else:
-#         message = "please verify your email"
-#     # verification link(will later change to f"http://localhost:3000/{frontend_path}?token={token}")
-#     verification_link = f"http://localhost:8000/{link}?token={token}"
-#     html_content = f"""
-#     <div style="font-family: Arial; padding: 20px; border: 1px solid; border-radius: 9px; text-align: center;">
-#         <h1 style="font-weight: Bold; color: blue;">blog-map</h1>
-#         <h2>Verify your email address</h2> 
-#         <hr/>
-#         <p>{message}</p>
-#         <a href="{verification_link}" style="
-#             display: inline-block;
-#             padding: 12px 24px;
-#             font-size: 15px;
-#             color: white;
-#             background-color: #007BFF;
-#             text-decoration: none;
-#             border-radius: 8px;
-#             margin-top: 10px;
-#         ">Verify Email</a>
-#         <p>If you did not request this, please ignore this email.</p>
-#     </div>
-#     """
-
-#     message = MessageSchema(
-#         subject="Email Verification",
-#         recipients=[email],
-#         body=html_content,
-#         subtype="html"
-#     )
-
-#     fast_mail = FastMail(mail_config)
-#     await fast_mail.send_message(message) 
-    
+        logger.exception(f"Unexpected error sending OTP to {email}")
