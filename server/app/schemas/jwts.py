@@ -8,6 +8,7 @@ from typing import Optional
 class Token(SQLModel):
     access_token: str
     refresh_token: Optional[str] = None
+    csrf_token: Optional[str] = None
     token_type: str    
 
 

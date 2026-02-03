@@ -30,7 +30,7 @@ except ValueError:
 redis_client = Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
-    username=REDIS_USER,
+    username=REDIS_USER if REDIS_USER != "default" else None,
     password=REDIS_PASSWORD,
     decode_responses=True, 
     socket_timeout=15,

@@ -1,26 +1,27 @@
 
 # import dependencies
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
 import logging
 from fastapi_limiter.depends import RateLimiter
 from pydantic import EmailStr
-from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate
+from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, ResendVerificationEmail, PasswordResetConfirm
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
-from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
-from datetime import timedelta
+from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp, resend_verification_otp
 from app.utility.security import get_identifier, hash_password, verify_password
-from app.utility.auth import get_current_user
+from app.utility.auth import logout_all_devices_for_user, get_current_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from app.utility.logging import get_logger
+from app.cores.redis import redis_client
 
 
 
 
+logger = logging.getLogger(__name__)
 # initialize router
 router = APIRouter(tags=["Users"], prefix="/users") 
-logger = logging.getLogger(__name__)
 
 
 # create endpoint to start registration by verifying email
@@ -60,6 +61,51 @@ async def start_registration(
 
     
 
+ 
+
+logger = get_logger("auth")
+
+
+@router.post(
+    "/resend-verification-email",
+    status_code=status.HTTP_200_OK,
+    dependencies=[
+        Depends(RateLimiter(times=2, minutes=10, identifier=get_identifier))
+    ],
+)
+async def resend_verification_email(
+    payload: ResendVerificationEmail, 
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+     # check if email already exists
+    try:
+        result = await db.exec(select(User).where(User.email == payload.email))
+        existing_user = result.first()
+    except Exception:
+        logger.exception("Database failure while checking existing email.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while checking email",
+        )
+
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists")
+
+
+    await resend_verification_otp(payload.email.lower(), background_tasks)
+
+    logger.info(
+        "resend_verification_requested",
+        extra={"email": payload.email}
+    )
+
+    return {
+        "detail": "If the email exists, a verification code has been sent."
+    }
+
+ 
+ 
  
 # create endpoint to complete registration
 logger = logging.getLogger(__name__)
@@ -114,7 +160,6 @@ async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         )
 
     return UserRead.model_validate(new_user)
-
 
 
 
@@ -235,6 +280,10 @@ async def update_password(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected database error occurred",
         )
+    
+    # logout all devices
+    await logout_all_devices_for_user(current_user.user_id)
+    
     return{
         "status": "Success",
         "message": "Password updated succesful",
@@ -313,6 +362,119 @@ async def complete_email_update(
 
 
 
+# endpoint for forgot_password
+@router.post(
+    "/password-reset/request",
+    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))]
+)
+async def request_password_reset(
+    user_data: EmailRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    email = user_data.email.lower().strip()
+
+    # check user exists
+    result = await db.exec(select(User).where(User.email == email))
+    user = result.first()
+
+    # important: do not reveal whether user exists
+    if user:
+        otp = await create_email_otp(
+            email=email,
+            scope="password_reset",
+        )
+
+        background_tasks.add_task(
+            send_verification_otp_email,
+            email,
+            otp,
+            "password_reset",
+        )
+
+        logger.info(
+            "password_reset_requested",
+            extra={"user_id": user.user_id}
+        )
+
+    return {
+        "message": "If the email exists, a password reset code has been sent."
+    }
+
+
+
+
+# confirm password reset
+@router.post(
+    "/password-reset/confirm",
+    dependencies=[Depends(RateLimiter(times=2, minutes=10, identifier=get_identifier))]
+)
+async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
+    # verify OTP
+    email = await verify_email_otp(otp_code=data.otp, scope="password_reset")
+
+    if not email:
+        logger.warning("password_reset_failed", extra={"email": email, "reason": "invalid_otp"})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code"
+        )
+
+    # fetch user
+    result = await db.exec(select(User).where(User.email == email))
+    user = result.first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request")
+
+    # update password
+    try:
+        user.password_hash = await hash_password(data.new_password)
+        db.add(user)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()     
+        logger.error(f"Failed to update password for user {user.user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to update password. Please try again."
+    )
+
+    # logout all devices
+    await logout_all_devices_for_user(user.user_id)
+
+    # cleanup OTP
+    await redis_client.delete(f"email_otp:password_reset:{email}")
+
+    logger.info(
+        "password_reset_success", 
+        extra={"user_id": user.user_id}
+    )
+
+    return {"message": "Password reset successful. Please log in again."}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # create endpoint to delete user
 @router.delete("/delete_user", status_code=status.HTTP_200_OK)
 async def delete_user(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -328,21 +490,3 @@ async def delete_user(db: AsyncSession = Depends(get_db), current_user: User = D
         ) from e
 
     return {"detail": "User deleted successfully"}  
-
-
-
-
-# create endpoint for users logout
-# @router.post("/logout")
-# async def logout(request: Request, response: Response, _=Depends(verify_csrf)):
-#     refresh_token = request.cookies.get("refresh_token")
-#     # delete in Redis (if exists)
-#     if refresh_token:
-#         await redis.delete(f"refresh:{refresh_token}")
-
-#     # Clear cookies
-#     response.delete_cookie("access_token")
-#     response.delete_cookie("refresh_token")
-#     response.delete_cookie("csrf_token")
-
-#     return {"message": "Logged out"}

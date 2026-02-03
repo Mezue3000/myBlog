@@ -64,5 +64,5 @@ app.add_middleware(CacheRequestBodyMiddleware)
 
 
 # include routers
-app.include_router(users.router)
 app.include_router(login.router)
+app.include_router(users.router)

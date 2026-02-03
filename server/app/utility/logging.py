@@ -2,10 +2,11 @@
 import logging
 import sys
 from logging.config import dictConfig
+from typing import Any, Dict
 
 
 
-# initialize logging params
+
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -17,6 +18,7 @@ LOGGING_CONFIG = {
             ),
         },
     },
+    
     "handlers": {
         "default": {
             "formatter": "default",
@@ -24,10 +26,12 @@ LOGGING_CONFIG = {
             "stream": sys.stdout,
         },
     },
+    
     "loggers": {
         "app": {
             "handlers": ["default"],
             "level": "INFO",
+            "propagate": False,
         },
     },
 }
@@ -35,13 +39,23 @@ LOGGING_CONFIG = {
 
 
 
-# function to setup logs
 def setup_logging():
     dictConfig(LOGGING_CONFIG)
-    
-    
-    
 
-# funtion to get logger
-def get_logger(name: str):
-    return logging.getLogger(f"app.{name}")
+
+
+
+class SafeExtraAdapter(logging.LoggerAdapter):
+    # Ensures `extra` always exists to avoid KeyError in formatters
+    def process(self, msg, kwargs):
+        kwargs.setdefault("extra", {})
+        kwargs["extra"].setdefault("extra", {})  
+        return msg, kwargs
+
+
+
+
+# function to get logger
+def get_logger(name: str) -> logging.LoggerAdapter:
+    base_logger = logging.getLogger(f"app.{name}")
+    return SafeExtraAdapter(base_logger, {})

@@ -84,4 +84,4 @@ class Comment(SQLModel, table=True):
 # resolve forward reference
 User.model_rebuild()
 Post.model_rebuild()
-Comment.model_rebuild()     
+Comment.model_rebuild()

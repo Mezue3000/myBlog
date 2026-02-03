@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives import serialization
 from datetime import timedelta, datetime, timezone
 import jwt, uuid
 from app.cores.redis import redis_client
-import secrets
+import secrets, json
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status, Request, Response
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -74,43 +74,66 @@ def create_access_token(subject: str, expire_delta: Optional[timedelta] = None) 
 
 # function to create jwt refresh token
 async def create_refresh_token(user_id: str) -> str:
-    refresh_token = secrets.token_urlsafe(48)
-    
-    # internal tracking only
-    refresh_id = str(uuid.uuid4()) 
+    if not user_id:
+        raise ValueError("create_refresh_token called with empty user_id")
 
+    # generate token
+    token = secrets.token_urlsafe(48)
+    
+    # internal tracking id (optional)
+    refresh_id = secrets.token_hex(16)
+    
+    # time to elapse
     ttl = int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds())
 
-    key = f"refresh:{refresh_token}"
-    
-    value = {
+    token_key = f"refresh:{token}"
+    user_key = f"user_refresh:{user_id}"
+
+    payload = {
         "user_id": user_id,
         "refresh_id": refresh_id,
     }
 
-    await redis_client.hset(key, mapping=value)
-    await redis_client.expire(key, ttl)
+    # store token
+    await redis_client.setex(token_key, ttl, json.dumps(payload))
+    
+    # index token for logout-all
+    await redis_client.sadd(user_key, token)
+    await redis_client.expire(user_key, ttl)
 
-    return refresh_token
+    return token
 
 
-
+   
 
 # function to rotate/invalidate old refresh token
 async def rotate_refresh_token(old_token: str) -> Optional[str]:
-    key = f"refresh:{old_token}"
-    
-    # get all refresh data
-    data = await redis_client.hgetall(key)
-    if not data:
-        return None  
+    if not old_token:
+        logger.warning("refresh_failed", extra={"reason": "missing_token"})
+        return None
 
-    user_id = data.get(b"user_id").decode()
+    token_key = f"refresh:{old_token}"
 
-    # invalidate old token first
-    await redis_client.delete(key)
+    # fetch data
+    json_data = await redis_client.get(token_key)
+    if not json_data:
+        logger.warning("refresh_failed", extra={"reason": "reuse_or_invalid"})
+        return None
 
-    # issue new refresh token
+    try:
+        data = json.loads(json_data)
+        user_id = data["user_id"]
+    except (KeyError, json.JSONDecodeError, TypeError):
+        logger.error("refresh_failed", extra={"reason": "corrupt_data"})
+        return None
+
+    user_key = f"user_refresh:{user_id}"
+
+    # token cleanup
+    await redis_client.delete(token_key)
+    await redis_client.srem(user_key, old_token)
+
+    # issue new token
     return await create_refresh_token(user_id)
 
 
@@ -119,7 +142,7 @@ async def rotate_refresh_token(old_token: str) -> Optional[str]:
 # function to get refresh failures
 logger = get_logger("auth")
 
-async def log_refresh_failure(reason: str, request):
+async def log_refresh_failure(request, reason: str):
     logger.warning(
         "refresh_failed",
         extra={
@@ -131,7 +154,6 @@ async def log_refresh_failure(reason: str, request):
             }
         },
     )
-
 
 
 
@@ -210,6 +232,45 @@ def set_auth_cookies(
 
  
  
+
+async def logout_all_devices_for_user(user_id: str) -> int:
+    # call with an id
+    if not user_id:
+        raise ValueError("logout_all_devices_for_user called with empty user_id")
+
+    # refresh tokens
+    user_key = f"user_refresh:{user_id}"
+    tokens = await redis_client.smembers(user_key)
+
+    revoked = 0
+
+    if tokens:
+        refresh_keys = [f"refresh:{t}" for t in tokens]
+        await redis_client.delete(*refresh_keys)
+        revoked = len(tokens)
+
+    # delete index
+    await redis_client.delete(user_key)
+
+    # # trusted devices (2FA)
+    # trusted_keys = await redis_client.keys(f"trusted_device:{user_id}:*")
+    # if trusted_keys:
+    #     await redis_client.delete(*trusted_keys)
+
+    logger.info(
+        "logout_all_devices",
+        extra={
+            "user_id": user_id,
+            "refresh_token_count": revoked,
+            # "trusted_devices_revoked": len(trusted_keys),
+        },
+    )
+
+    return revoked
+
+
+
+
 # testing the function    
 # if __name__ == "__main__":
 #     data = {"user_id": 1,}

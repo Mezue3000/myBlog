@@ -9,9 +9,10 @@ import pyotp
 import httpx
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from app.cores.redis import redis_client
 from jwt import ExpiredSignatureError, PyJWKError
+from app.utility.logging import get_logger
 
 
 
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 # function to create email otp
 EMAIL_OTP_EXPIRE_MINUTES = 10
-EMAIL_OTP_COOLDOWN_SECONDS = 60
+EMAIL_OTP_COOLDOWN_SECONDS = 180
 
 async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[timedelta] = None) -> str:
     
@@ -171,7 +172,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         subject = "BlogMap Verification Email - Registration"
         endnote = "If you did not request this, please ignore this email."
 
-    elif scope == "2FA":
+    elif scope == "2FA": 
         user_message = (
             "We noticed a login attempt on your account. "
             "If that was you, please enter this code below:"
@@ -190,7 +191,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         subject = "BlogMap Email Change Confirmation"
         endnote = "If you did not request this change, contact support immediately."
 
-    elif scope == "reset":
+    elif scope == "password_reset":
         user_message = (
             "You requested to reset your password. "
             "Please enter this code to proceed:"
@@ -205,33 +206,25 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
 
     # html setup
     html_content = f"""
-    <div style="font-family: Arial; padding: 20px; border: 1px solid #ddd;
-                border-radius: 12px; text-align: center;">
-        <h1 style="font-weight: bold;">BlogMap</h1>
-
-        <p>Hi {email},</p>
-        <p>{user_message}</p>
-
-        <div style="
-            display: inline-block;
-            font-size: 32px;
-            font-weight: bold;
-            letter-spacing: 8px;
-            padding: 12px 24px;
-            background: #f2f7ff;
-            border-radius: 8px;
-            margin: 20px 0;
-        ">
-            {otp}
-        </div>
-
-        <p>This code will expire in 7 minutes.</p>
-        <p>{endnote}</p>
-
-        <hr/>
-        <p>Best regards,<br/>BlogMap Inc</p>
+<div style="font-family:Arial,sans-serif;max-width:480px;margin:20px auto;padding:24px;background:var(--bg,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:12px;text-align:center;">
+  <style>
+    :root{{--bg:#fff;--text:#111;--otp-bg:#f8f9fa;--border:#e0e0e0;}}
+    @media (prefers-color-scheme:dark){{:root{{--bg:#111;--text:#eee;--otp-bg:#333;--border:#444;}}}}
+  </style>
+  <h1 style="margin:0 0 20px;color:var(--text);">BlogMap</h1>
+  <p style="margin:0 0 12px;">Hi {email},</p>
+  <p style="margin:0 0 20px;">{user_message}</p>
+  <div style="background:var(--otp-bg);padding:16px 24px;margin:24px auto;max-width:240px;border-radius:10px;border:1px solid var(--border);">
+    <div style="font-family:monospace;font-size:40px;font-weight:bold;letter-spacing:0;color:var(--text);">
+      {otp}
     </div>
-    """
+  </div>
+  <p style="margin:0 0 12px;font-size:14px;color:#666;">Expires in 7 minutes</p>
+  <p style="margin:0 0 20px;">{endnote}</p>
+  <div style="border-top: 1px solid #dddddd; margin: 25px 0; line-height: 1px; font-size: 1px;">&nbsp;</div>
+  <p style="margin:0;font-size:13px;color:#777;">Best regards,<br/>BlogMap Team</p>
+</div>
+"""
 
     payload = {
         "from": MAIL_FROM,
@@ -273,3 +266,35 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
 
     except Exception as e:
         logger.exception(f"Unexpected error sending OTP to {email}")
+        
+        
+        
+        
+ 
+logger = get_logger("email")
+
+OTP_TTL_SECONDS = 300  # 5 minutes
+
+# function to resend verification email
+async def resend_verification_otp(email: str, background_tasks:BackgroundTasks) -> None:
+    
+    otp = await create_email_otp(email, scope="registration")
+
+    key = f"email_otp:{email}"
+
+    # overwrite existing OTP
+    try:
+        await redis_client.setex(key, OTP_TTL_SECONDS, str(otp))
+    except Exception as e:
+        logger.error("redis_otp_storage_failed", extra={"email": email, "error": str(e)})
+        raise HTTPException(status_code=500, detail="Could not generate code")
+
+    # background this: The user shouldn't wait for the email API to respond
+    background_tasks.add_task(
+        send_verification_otp_email,
+        email=email,
+        otp=otp,
+        scope="registration"
+    )
+
+    logger.info("verification_otp_queued", extra={"email": email})

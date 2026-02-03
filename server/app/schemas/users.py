@@ -112,7 +112,42 @@ class EmailRequest(SQLModel):
     
     
     
-# schema to update email
+# schema for update email
 class EmailUpdate(SQLModel):
     new_email: EmailStr
     password: str
+
+
+
+
+# schems for resend email
+class ResendVerificationEmail(SQLModel):
+    email: EmailStr
+
+
+
+
+class PasswordResetConfirm(SQLModel):
+    otp: str
+    new_password: str
+    confirm_password: str
+    
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str):
+        if not any(c.isupper() for c in v):
+            raise ValueError("New password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("New password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("New password must contain at least one digit")
+        if not any(c in "!@#$%^&*()-_=+[{]};:<>?|/" for c in v):
+            raise ValueError("New password must contain at least one special character")
+        return v
+    
+    @model_validator(mode="after")
+    def validate_password_logic(self) -> "PasswordResetConfirm":
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirm password do not match")
+
+        return self
