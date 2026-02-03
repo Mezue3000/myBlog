@@ -24,6 +24,7 @@ class User(SQLModel, table=True):
     password_hash: str = Field(max_length=255, nullable=False)
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)
+    is_2fa_enabled: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # create relationship
