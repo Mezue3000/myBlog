@@ -127,6 +127,7 @@ class ResendVerificationEmail(SQLModel):
 
 
 
+# schema for password-reset
 class PasswordResetConfirm(SQLModel):
     otp: str
     new_password: str
@@ -151,3 +152,11 @@ class PasswordResetConfirm(SQLModel):
             raise ValueError("New password and confirm password do not match")
 
         return self
+
+
+
+
+# schema for otp verification
+class TwoFAVerify(SQLModel): 
+    otp: str
+    remember_device: bool = False

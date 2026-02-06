@@ -16,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 
 # load environmental variable
-load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/blog_post/server/app/utility/.env")
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
 
@@ -26,12 +26,14 @@ config = context.config
 
 
 # get environmental variable
-database_url = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL") 
+
+
 
 
 
 # set database url
-config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 
 

@@ -19,6 +19,7 @@ load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/util
 
 
 
+
 # get environ key
 key = os.getenv("SPIRIT_KEY").encode()
 fernet = Fernet(key)

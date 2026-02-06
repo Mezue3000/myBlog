@@ -183,6 +183,47 @@ async def verify_origin(request: Request):
 
 
 
+# generate and store trusted device
+async def create_trusted_device(user_id: str) -> str:
+    device_id = secrets.token_urlsafe(48)
+    key = f"trusted_device:{user_id}:{device_id}"
+
+    payload = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_used": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await redis_client.setex(
+        key,
+        int(timedelta(days=30).total_seconds()),
+        json.dumps(payload),
+    )
+
+    return device_id
+
+
+
+
+# verify trusted device
+async def is_trusted_device(user_id: str, device_id: str) -> bool:
+    if not device_id:
+        return False
+
+    key = f"trusted_device:{user_id}:{device_id}"
+    exists = await redis_client.exists(key)
+
+    if exists:
+        await redis_client.expire(
+            key,
+            int(timedelta(days=30).total_seconds())
+        )
+
+    return bool(exists)
+
+
+
+
+# function set cookies
 COOKIE_DOMAIN = ""
 
 def set_auth_cookies(
@@ -232,7 +273,21 @@ def set_auth_cookies(
 
  
  
+# function for device_id cookie
+def set_trusted_device_cookie(response: Response, device_id: str):
+    response.set_cookie(
+        key="trusted_device",
+        value=device_id,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=60 * 60 * 24 * 30,  # 30 days
+    )
 
+
+ 
+
+# function for all-device logout
 async def logout_all_devices_for_user(user_id: str) -> int:
     # call with an id
     if not user_id:

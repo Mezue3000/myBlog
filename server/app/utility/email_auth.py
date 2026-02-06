@@ -107,39 +107,59 @@ async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[t
 
 # function to verify email otp
 async def verify_email_otp(otp_code: str, scope: str) -> str:
-    # verifies OTP and returns the verified email.
+    """
+    Verifies an email OTP and returns the verified email.
+    OTP is single-use and scope-bound.
+    """
+    otp_code = str(otp_code).strip()
     pattern = f"email_otp:{scope}:*"
-    keys = await redis_client.keys(pattern)
-
-    if not keys:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP expired or invalid",
-        )
 
     now = datetime.now(timezone.utc)
 
-    for key in keys:
+    async for key in redis_client.scan_iter(match=pattern):
         raw = await redis_client.get(key)
         if not raw:
             continue
 
-        payload = json.loads(raw)
-        expires_at = datetime.fromisoformat(payload["expires_at"])
+        try:
+            payload = json.loads(raw)
+            expires_at = datetime.fromisoformat(payload["expires_at"])
+        except (KeyError, ValueError, json.JSONDecodeError):
+            await redis_client.delete(key)
+            continue
 
+        # expired → cleanup
         if now > expires_at:
             await redis_client.delete(key)
             continue
 
-        totp = pyotp.TOTP(payload["secret"], interval=payload["interval"])
+        totp = pyotp.TOTP(
+            payload["secret"],
+            interval=payload["interval"],
+        )
 
-        if totp.verify(str(otp_code), valid_window=1):
+        if totp.verify(otp_code, valid_window=1):
             email = key.split(":")[-1]
 
-            # single-use
+            # single-use OTP
             await redis_client.delete(key)
 
+            logger.info(
+                "email_otp_verified",
+                extra={
+                    "email": email,
+                    "scope": scope,
+                },
+            )
+
             return email
+
+    logger.warning(
+        "email_otp_failed",
+        extra={
+            "scope": scope,
+        },
+    )
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -201,7 +221,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
 
     else:
         user_message = "Use the verification code below."
-        subject = "BlogMap Email Verification Code"
+        subject = "Fraud Alert....Be Alert"
         endnote = "If you did not request this, please ignore this email."
 
     # html setup
@@ -273,8 +293,8 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
  
 logger = get_logger("email")
 
-OTP_TTL_SECONDS = 300  # 5 minutes
-
+# 5 minutes
+OTP_TTL_SECONDS = 300  
 # function to resend verification email
 async def resend_verification_otp(email: str, background_tasks:BackgroundTasks) -> None:
     

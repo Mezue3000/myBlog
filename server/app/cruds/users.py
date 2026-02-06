@@ -1,4 +1,3 @@
-
 # import dependencies
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
 import logging
@@ -20,6 +19,7 @@ from app.cores.redis import redis_client
 
 
 logger = logging.getLogger(__name__)
+
 # initialize router
 router = APIRouter(tags=["Users"], prefix="/users") 
 
@@ -73,6 +73,7 @@ logger = get_logger("auth")
         Depends(RateLimiter(times=2, minutes=10, identifier=get_identifier))
     ],
 )
+
 async def resend_verification_email(
     payload: ResendVerificationEmail, 
     background_tasks: BackgroundTasks,
@@ -111,6 +112,7 @@ async def resend_verification_email(
 logger = logging.getLogger(__name__)
 
 @router.post("/complete_registration", response_model=UserRead)
+
 async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSession = Depends(get_db)):
     
     logger.info("Starting registration completion")
@@ -181,6 +183,7 @@ async def read_user(db: AsyncSession = Depends(get_db), current_user: User = Dep
   
 # create user update endpoint
 @router.put("/update_user", response_model=UserUpdateRead)
+
 async def update_user(
     user_data: UserUpdate, 
     db: AsyncSession = Depends(get_db), 
@@ -230,6 +233,7 @@ async def update_user(
 
 # create endpoint to change user password
 @router.put("/update_password", status_code=status.HTTP_200_OK)
+
 async def update_password(
     payload: UserPasswordUpdate, 
     db: AsyncSession = Depends(get_db), 
@@ -298,6 +302,7 @@ async def update_password(
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))],
     status_code=status.HTTP_200_OK
 )
+
 async def update_email(
     user: EmailUpdate,
     background_tasks: BackgroundTasks,
@@ -336,6 +341,7 @@ async def update_email(
 
 # complete email update endpoint
 @router.post("/complete_email_update", status_code=status.HTTP_200_OK)
+
 async def complete_email_update(
     otp_code: str, 
     db: AsyncSession=Depends(get_db), 
@@ -367,6 +373,7 @@ async def complete_email_update(
     "/password-reset/request",
     dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))]
 )
+
 async def request_password_reset(
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
@@ -380,22 +387,11 @@ async def request_password_reset(
 
     # important: do not reveal whether user exists
     if user:
-        otp = await create_email_otp(
-            email=email,
-            scope="password_reset",
-        )
+        otp = await create_email_otp(email=email, scope="password_reset")
 
-        background_tasks.add_task(
-            send_verification_otp_email,
-            email,
-            otp,
-            "password_reset",
-        )
+        background_tasks.add_task(send_verification_otp_email, email, otp, "password_reset")
 
-        logger.info(
-            "password_reset_requested",
-            extra={"user_id": user.user_id}
-        )
+        logger.info("password_reset_requested", extra={"user_id": user.user_id})
 
     return {
         "message": "If the email exists, a password reset code has been sent."
@@ -409,6 +405,7 @@ async def request_password_reset(
     "/password-reset/confirm",
     dependencies=[Depends(RateLimiter(times=2, minutes=10, identifier=get_identifier))]
 )
+
 async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
     # verify OTP
     email = await verify_email_otp(otp_code=data.otp, scope="password_reset")
@@ -452,25 +449,6 @@ async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = 
     )
 
     return {"message": "Password reset successful. Please log in again."}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

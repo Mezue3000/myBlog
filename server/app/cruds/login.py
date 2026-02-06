@@ -1,5 +1,5 @@
 # import necessary dependencies
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response 
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, BackgroundTasks
 from fastapi_limiter.depends import RateLimiter
 from app.schemas.jwts import Token
 from fastapi.security import OAuth2PasswordRequestForm
@@ -8,16 +8,22 @@ from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
 from app.utility.security import get_identifier, verify_password
-from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, logout_all_devices_for_user,  ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure
+from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, logout_all_devices_for_user,  ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure, create_trusted_device, is_trusted_device, set_trusted_device_cookie
 import secrets, json, logging
 from app.cores.redis import redis_client
+from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
+from app.schemas.users import TwoFAVerify
+
+
 
 
 
 logger = logging.getLogger(__name__)
 
+
 # initialize router
 router = APIRouter(tags=["authenticate"])
+
 
 # create an endpoint to sign_in and grab token
 @router.post(
@@ -25,11 +31,15 @@ router = APIRouter(tags=["authenticate"])
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))], 
     response_model=Token,
 )
+
 async def login(
+    request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: AsyncSession = Depends(get_db),
 ):
+    
     # OAuth2PasswordRequestForm uses "username" for both email and username   
     login_identifier = form_data.username.lower().strip()
     password = form_data.password   
@@ -53,17 +63,76 @@ async def login(
             detail="Invalid email/username or password"
         )
     
-    # generate jwt tokens
+    # 2FA is mandatory
+    trusted_device = request.cookies.get("trusted_device")
+
+    if trusted_device and await is_trusted_device(user.id, trusted_device):
+        logger.info("trusted_device_login", extra={"user_id": user.user_id})
+        
+        # generate tokens
+        access_token = create_access_token(subject=user.username)
+        refresh_token = await create_refresh_token(user.username)
+        
+        # generate csrf token(double submit token)
+        # csrf_token = secrets.token_urlsafe(32)
+        
+        # set cookies
+        set_auth_cookies(response, access_token, refresh_token)
+
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    # if not trusted → trigger OTP
+    otp = await create_email_otp(email=user.email, scope="2FA")
+ 
+    # send verification using background task
+    background_tasks.add_task(send_verification_otp_email, user.email, otp, "2FA")
+
+    logger.info("2fa_challenge_sent", extra={"user_id": user.user_id})
+
+    return {
+        "detail": "2FA code sent to your email",
+        "requires_2fa": True,
+    }
+
+
+
+
+# endpoint for 2FA verification
+@router.post(
+    "/2fa/verify",
+    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))],
+)
+async def verify_2fa(
+    request: Request,
+    response: Response,
+    data: TwoFAVerify,
+    db: AsyncSession = Depends(get_db),
+):
+    # email is derived from OTP
+    email = await verify_email_otp(otp_code=data.otp, scope="2FA")
+
+    result = await db.exec(select(User).where(User.email == email))
+    user = result.first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request")
+
+    # generate tokens
     access_token = create_access_token(subject=user.username)
-    refresh_token = await create_refresh_token(user_id=user.username)
-    
-    # # generate csrf token (double-submit)
+    refresh_token = await create_refresh_token(user.username)
     # csrf_token = secrets.token_urlsafe(32)
     
     # set cookies
     set_auth_cookies(response, access_token, refresh_token)
-     
-    return {"access_token": access_token, "token_type": "bearer"}  
+
+    # remember device if requested
+    if data.remember_device:
+        device_id = await create_trusted_device(user.user_id)
+        set_trusted_device_cookie(response, device_id)
+
+    logger.info("2fa_success", extra={"user_id": user.user_id})
+
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 
@@ -175,3 +244,30 @@ async def single_session_logout(request: Request, response: Response):
     response.delete_cookie("csrf_token")
 
     return {"message": "Logged out succesfully"}
+
+
+
+
+
+
+# @router.post("/2fa/enable")
+# async def enable_2fa(
+#     user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     if user.is_2fa_enabled:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="2FA already enabled",
+#         )
+
+#     user.is_2fa_enabled = True
+#     db.add(user)
+#     await db.commit()
+
+#     logger.info(
+#         "2fa_enabled",
+#         extra={"user_id": user.id},
+#     )
+
+#     return {"detail": "Two-factor authentication enabled"}
