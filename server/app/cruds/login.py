@@ -2,6 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, BackgroundTasks
 from fastapi_limiter.depends import RateLimiter
 from app.schemas.jwts import Token
+from typing import Union
+from app.schemas.users import TwoFAChallenge
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
 from app.utility.database import get_db 
@@ -29,7 +31,7 @@ router = APIRouter(tags=["authenticate"])
 @router.post(
     "/token", 
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))], 
-    response_model=Token,
+    response_model=Union[Token, TwoFAChallenge]
 )
 
 async def login(
@@ -49,6 +51,10 @@ async def login(
     result = await db.exec(statement)
     user = result.first()
     
+    # validate active user
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+    
     # Validate user existence
     if not user:
         raise HTTPException(
@@ -66,7 +72,7 @@ async def login(
     # 2FA is mandatory
     trusted_device = request.cookies.get("trusted_device")
 
-    if trusted_device and await is_trusted_device(user.id, trusted_device):
+    if trusted_device and await is_trusted_device(user.user_id, trusted_device):
         logger.info("trusted_device_login", extra={"user_id": user.user_id})
         
         # generate tokens
@@ -102,6 +108,7 @@ async def login(
     "/2fa/verify",
     dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))],
 )
+
 async def verify_2fa(
     request: Request,
     response: Response,
@@ -193,28 +200,19 @@ async def logout_all_devices(request: Request, response: Response):
     refresh_token = request.cookies.get("refresh_token")
 
     if not refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
     # validate refresh token
     data = await redis_client.get(f"refresh:{refresh_token}")
     if not data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     # extract user_id
     payload = json.loads(data)
     user_id = payload.get("user_id")
 
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid session",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
 
     # call plain async function
     await logout_all_devices_for_user(user_id)

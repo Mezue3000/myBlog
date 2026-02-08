@@ -260,7 +260,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
 
     # send email
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             response = await client.post(
                 RESEND_API_URL,
                 json=payload,

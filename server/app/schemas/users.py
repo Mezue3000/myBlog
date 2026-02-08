@@ -46,6 +46,7 @@ class UserCreate(UserBase):
 
 
 
+
 # schema for reading user
 class UserRead(UserBase):
     user_id: int
@@ -54,6 +55,7 @@ class UserRead(UserBase):
     updated_at: Optional[datetime] = None
     
     model_config = ConfigDict(from_attributes=True)
+    
     
     
 
@@ -105,13 +107,15 @@ class UserPasswordUpdate(SQLModel):
         return self
     
 
+
+
 # schema for email verification
 class EmailRequest(SQLModel):
     email: EmailStr
     
     
     
-    
+
 # schema for update email
 class EmailUpdate(SQLModel):
     new_email: EmailStr
@@ -152,6 +156,14 @@ class PasswordResetConfirm(SQLModel):
             raise ValueError("New password and confirm password do not match")
 
         return self
+
+
+
+
+# schema for successful 2FA
+class TwoFAChallenge(SQLModel):
+    detail: str
+    requires_2fa: bool = True
 
 
 

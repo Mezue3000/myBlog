@@ -10,7 +10,7 @@ from sqlmodel import select, or_
 from app.models import User
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp, resend_verification_otp
 from app.utility.security import get_identifier, hash_password, verify_password
-from app.utility.auth import logout_all_devices_for_user, get_current_user
+from app.utility.auth import logout_all_devices_for_user, get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.utility.logging import get_logger
 from app.cores.redis import redis_client
@@ -187,7 +187,7 @@ async def read_user(db: AsyncSession = Depends(get_db), current_user: User = Dep
 async def update_user(
     user_data: UserUpdate, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     update_fields = user_data.model_dump(exclude_unset=True)
     
@@ -237,7 +237,7 @@ async def update_user(
 async def update_password(
     payload: UserPasswordUpdate, 
     db: AsyncSession = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     # validate old password
     if not await verify_password(payload.old_password, current_user.password_hash):
@@ -307,7 +307,7 @@ async def update_email(
     user: EmailUpdate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
 ):
     new_email = user.new_email.lower().strip()
 
@@ -345,7 +345,7 @@ async def update_email(
 async def complete_email_update(
     otp_code: str, 
     db: AsyncSession=Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ): 
     # verify otp
     try: 
@@ -455,7 +455,10 @@ async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = 
 
 # create endpoint to delete user
 @router.delete("/delete_user", status_code=status.HTTP_200_OK)
-async def delete_user(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_user(
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_active_user),
+):
     
     try:
         await db.delete(current_user)
