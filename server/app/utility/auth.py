@@ -307,17 +307,11 @@ async def logout_all_devices_for_user(user_id: str) -> int:
     # delete index
     await redis_client.delete(user_key)
 
-    # # trusted devices (2FA)
-    # trusted_keys = await redis_client.keys(f"trusted_device:{user_id}:*")
-    # if trusted_keys:
-    #     await redis_client.delete(*trusted_keys)
-
     logger.info(
         "logout_all_devices",
         extra={
             "user_id": user_id,
             "refresh_token_count": revoked,
-            # "trusted_devices_revoked": len(trusted_keys),
         },
     )
 
@@ -380,4 +374,3 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive or suspended")
     return current_user
-

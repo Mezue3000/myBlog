@@ -220,8 +220,7 @@ async def logout_all_devices(request: Request, response: Response):
     # clear cookies
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
-    # response.delete_cookie("csrf")
-    # response.delete_cookie("trusted_device")
+    response.delete_cookie("csrf")
 
     return {"detail": "Logged out from all devices"}
 
@@ -242,30 +241,3 @@ async def single_session_logout(request: Request, response: Response):
     response.delete_cookie("csrf_token")
 
     return {"message": "Logged out succesfully"}
-
-
-
-
-
-
-# @router.post("/2fa/enable")
-# async def enable_2fa(
-#     user: User = Depends(get_current_user),
-#     db: AsyncSession = Depends(get_db),
-# ):
-#     if user.is_2fa_enabled:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="2FA already enabled",
-#         )
-
-#     user.is_2fa_enabled = True
-#     db.add(user)
-#     await db.commit()
-
-#     logger.info(
-#         "2fa_enabled",
-#         extra={"user_id": user.id},
-#     )
-
-#     return {"detail": "Two-factor authentication enabled"}

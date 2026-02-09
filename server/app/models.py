@@ -28,8 +28,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # create relationship
-    posts: Mapped[List["Post"]] = Relationship(back_populates="user")
-    comments: Mapped[List["Comment"]] = Relationship(back_populates="user")    
+    posts: Mapped[List["Post"]] = Relationship(back_populates="user")   
     
 
 
@@ -74,9 +73,7 @@ class Comment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False) 
     # add foreign key
     post_id: int = Field(foreign_key="posts.post_id")
-    user_id: int = Field(foreign_key="users.user_id")
     # create relationship
-    user: Mapped["User"] = Relationship(back_populates="comments")
     post: Mapped["Post"] = Relationship(back_populates="comments")
     
     
