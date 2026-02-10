@@ -10,6 +10,43 @@ from sqlalchemy import ForeignKey
 
 
 
+# create link table(m-m r/ship)
+class RolePermission(SQLModel, table=True):
+    __tablename__ = "role_permissions"
+
+    role_id: int = Field(foreign_key="roles.role_id", primary_key=True)
+    permission_id: int = Field(foreign_key="permissions.permission_id", primary_key=True)
+
+
+
+
+# create role model
+class Role(SQLModel, table=True):
+    __tablename__ = "roles"
+
+    role_id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True, max_length=50)
+
+    # relationships
+    users: List["User"] = Relationship(back_populates="role")
+    permissions: List["Permission"] = Relationship(back_populates="roles", link_model=RolePermission)
+
+
+
+
+# create permission model
+class Permission(SQLModel, table=True):
+    __tablename__ = "permissions"
+
+    permission_id: Optional[int] = Field(default=None, primary_key=True)
+    code: str = Field(index=True, unique=True, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=255)
+    
+    # relationships
+    roles: List[Role] = Relationship(back_populates="permissions", link_model=RolePermission)
+
+
+
 
 # create user model
 class User(SQLModel, table=True):
@@ -19,7 +56,7 @@ class User(SQLModel, table=True):
     first_name: str = Field(max_length=25, nullable=False)
     last_name: str = Field(max_length=25, nullable=False)
     username: str = Field(max_length=75, nullable=False, unique=True, index=True)
-    email: str = Field(max_length=75, nullable=False, unique=True)
+    email: str = Field(max_length=75, nullable=False, unique=True, index=True)
     biography: str = Field(max_length=350, nullable=True)
     password_hash: str = Field(max_length=255, nullable=False)
     country: str = Field(max_length=25, nullable=False)
@@ -27,10 +64,12 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True, nullable=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
+    # add foreign key
+    role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
     # create relationship
+    role: Optional[Role] = Relationship(back_populates="users")
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")   
     
-
 
 
 
@@ -48,8 +87,9 @@ class Post(SQLModel, table=True):
         sa_column=sa.Column(
             sa.Integer,
             ForeignKey("users.user_id", onupdate="CASCADE", ondelete="RESTRICT"),
+            index=True,
             nullable=False
-        )
+        ),
     )  
     # create relationship
     user: Mapped["User"] = Relationship(back_populates = "posts")
@@ -63,7 +103,6 @@ class Post(SQLModel, table=True):
 
 
 
-
 # create comment model
 class Comment(SQLModel, table=True):
     __tablename__ = "comments"
@@ -72,14 +111,17 @@ class Comment(SQLModel, table=True):
     content: str = Field(max_length=225, index=True, nullable=False)
     created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False) 
     # add foreign key
-    post_id: int = Field(foreign_key="posts.post_id")
+    post_id: int = Field(foreign_key="posts.post_id", index=True)
     # create relationship
     post: Mapped["Post"] = Relationship(back_populates="comments")
     
     
     
     
-# resolve forward reference
+# fix forward reference
+RolePermission.model_rebuild()
+Role.model_rebuild()
+Permission.model_rebuild()
 User.model_rebuild()
 Post.model_rebuild()
 Comment.model_rebuild()

@@ -37,14 +37,14 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 
 
-# Alembic configuration
+# alembic configuration
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
 
-# Import your models
-from app.models import User, Post, Comment 
+# import your models
+from app.models import RolePermission, Role, Permission, User, Post, Comment 
 target_metadata = SQLModel.metadata
 
 

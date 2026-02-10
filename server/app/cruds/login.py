@@ -51,15 +51,16 @@ async def login(
     result = await db.exec(statement)
     user = result.first()
     
-    # validate active user
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
-    
     # Validate user existence
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Invalid email/username or password")
+        
+    # validate active user
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+    
     
     # validate password
     verified_password = await verify_password(password, user.password_hash)
@@ -220,7 +221,7 @@ async def logout_all_devices(request: Request, response: Response):
     # clear cookies
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
-    response.delete_cookie("csrf")
+    response.delete_cookie("csrf") 
 
     return {"detail": "Logged out from all devices"}
 
