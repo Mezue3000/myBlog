@@ -11,10 +11,10 @@ from fastapi import Depends, HTTPException, status, Request, Response
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from typing import Optional
-from app.schemas.jwts import TokenData
+from sqlalchemy.orm import selectinload 
 from jwt import PyJWKError, ExpiredSignatureError
 from sqlmodel import select
-from app.models import User
+from app.models import User, Role, Permission, RolePermission
 from app.utility.logging import get_logger
 
 
@@ -53,16 +53,16 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 # function to create jwt access token 
-def create_access_token(subject: str, expire_delta: Optional[timedelta] = None) -> str:
+def create_access_token(user_id: str, expire_delta: Optional[timedelta] = None) -> str:
     
     now = datetime.now(timezone.utc)
 
     payload = {
-        "sub": subject,
+        "sub": str(user_id),
         "scope": "access",
-        "iat": now,
+        "iat": int(now.timestamp()),
         "exp": now + (expire_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)),
-        "jti": str(uuid.uuid4()),
+        # "jti": str(uuid.uuid4()),
     }
     
     encoded_jwt = jwt.encode(payload, private_key, algorithm=ALGORITHM)
@@ -327,9 +327,9 @@ async def logout_all_devices_for_user(user_id: str) -> int:
 #     toky = create_access_token(data, expire_delta) 
 #     deco =jwt.decode(toky, public_key, algorithms=ALGORITHM)
 #     print(deco) 
-
-
-
+        
+   
+   
 
 # function to get current user
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -338,7 +338,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     credential_exception = HTTPException(
         status_code = status.HTTP_401_UNAUTHORIZED, 
         detail = "Invalid credentials", 
-        headers = {"WWW.Authenticate": "Bearer"})
+        headers = {"WWW-Authenticate": "Bearer"})
     
     expired_token_error = HTTPException(
         status_code = status.HTTP_401_UNAUTHORIZED,
@@ -346,26 +346,35 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         headers = {"WWW-Authenticate": "Bearer"})
     
     try:
-        payload = jwt.decode(token, public_key, algorithms=ALGORITHM)
-        username: Optional[str] = payload.get("sub")
-        if username is None:
+        payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
+        
+        user_id: Optional[str] = payload.get("sub")
+        scope: Optional[str] = payload.get("scope")
+        
+        if user_id is None or scope != "access":
             raise credential_exception
-        token_data = TokenData(username=username)
+        
+        user_id = int(user_id)
         
     except ExpiredSignatureError:
         raise expired_token_error
         
     except jwt.PyJWTError:
         raise credential_exception 
+
+    statement = (
+        select(User)
+        .where(User.user_id == user_id)
+        .options(selectinload(User.role).selectinload(Role.permissions))
+    )
     
-    statement = select(User).where(User.username == token_data.username)
     result = await db.exec(statement)
     user = result.first()
     
     if user is None:
         raise credential_exception
     return user 
-
+ 
 
 
 

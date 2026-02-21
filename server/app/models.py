@@ -53,16 +53,18 @@ class User(SQLModel, table=True):
     __tablename__ = "users"
     
     user_id: Optional[int] = Field(default=None, primary_key=True) 
-    first_name: str = Field(max_length=25, nullable=False)
-    last_name: str = Field(max_length=25, nullable=False)
-    username: str = Field(max_length=75, nullable=False, unique=True, index=True)
+    username: str = Field(max_length=55, nullable=False, unique=True, index=True)
     email: str = Field(max_length=75, nullable=False, unique=True, index=True)
     biography: str = Field(max_length=350, nullable=True)
     password_hash: str = Field(max_length=255, nullable=False)
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)
-    is_active: bool = Field(default=True, nullable=False)
-    created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
+    is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     # add foreign key
     role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
@@ -80,7 +82,11 @@ class Post(SQLModel, table=True):
     post_id: Optional[int] = Field(default_factory=None, primary_key=True)
     title: str = Field(max_length=125, nullable=False, index=True)
     content: str = Field(max_length=450, nullable=False)
-    created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False)
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)    
     # add foreign key with cascade and restrict 
     user_id: int = Field(
@@ -109,7 +115,11 @@ class Comment(SQLModel, table=True):
     
     comment_id: Optional[int] = Field(default_factory=None, primary_key=True)
     content: str = Field(max_length=225, index=True, nullable=False)
-    created_at: datetime = Field(default_factory=lambda:datetime.now(timezone.utc), nullable=False) 
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    ) 
     # add foreign key
     post_id: int = Field(foreign_key="posts.post_id", index=True)
     # create relationship

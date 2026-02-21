@@ -13,8 +13,7 @@ class Token(SQLModel):
 
 
 
-# token data schema 
-class TokenData(SQLModel):
-    username: Optional[str] = None
-    
-
+# # token data schema 
+# class TokenData(SQLModel):
+#     user_id: str
+#     scope: str

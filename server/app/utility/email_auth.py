@@ -286,35 +286,3 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
 
     except Exception as e:
         logger.exception(f"Unexpected error sending OTP to {email}")
-        
-        
-        
-        
- 
-logger = get_logger("email")
-
-# 5 minutes
-OTP_TTL_SECONDS = 300  
-# function to resend verification email
-async def resend_verification_otp(email: str, background_tasks:BackgroundTasks) -> None:
-    
-    otp = await create_email_otp(email, scope="registration")
-
-    key = f"email_otp:{email}"
-
-    # overwrite existing OTP
-    try:
-        await redis_client.setex(key, OTP_TTL_SECONDS, str(otp))
-    except Exception as e:
-        logger.error("redis_otp_storage_failed", extra={"email": email, "error": str(e)})
-        raise HTTPException(status_code=500, detail="Could not generate code")
-
-    # background this: The user shouldn't wait for the email API to respond
-    background_tasks.add_task(
-        send_verification_otp_email,
-        email=email,
-        otp=otp,
-        scope="registration"
-    )
-
-    logger.info("verification_otp_queued", extra={"email": email})
