@@ -11,7 +11,7 @@ from sqlmodel import select, or_
 from app.models import User
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
 from app.utility.security import get_identifier, hash_password, verify_password
-from app.utility.auth import logout_all_devices_for_user, get_current_user, get_current_active_user
+from app.utility.auth import verify_users_ownership, logout_all_devices_for_user, get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.cores.redis import redis_client
 
@@ -47,6 +47,9 @@ async def update_user(
     db: AsyncSession = Depends(get_db), 
 ):
     update_fields = user_data.model_dump(exclude_unset=True)
+    
+    # check ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
     
     # Check for duplicate username
     if "username" in update_fields:
@@ -96,6 +99,9 @@ async def update_password(
     current_user: User  = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+     # validate ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
+     
     # validate old password
     if not await verify_password(payload.old_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
@@ -166,6 +172,9 @@ async def update_email(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # validate ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
+    
     new_email = user.new_email.lower().strip()
 
     # check if new email already exists
@@ -204,15 +213,18 @@ async def complete_email_update(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession=Depends(get_db)
 ): 
+    # validate ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
+    
     # verify otp
     try: 
         email = verify_email_otp(otp_code=otp_code, scope="update")
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     
-    current_user.email = email
     # update and safe
     try:
+        current_user.email = email
         db.add(current_user)
         await db.commit()
         await db.refresh(current_user)
@@ -228,14 +240,18 @@ async def complete_email_update(
 # create endpoint to delete user
 @router.delete("/delete_user", status_code=status.HTTP_200_OK)
 
-async def delete_user(
+async def soft_delete_user(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # validate ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
     
     try:
-        await db.delete(current_user)
+        current_user.is_active = False 
+        db.add(current_user)
         await db.commit()
+        await db.refresh(current_user)
     except SQLAlchemyError as e:
         await db.rollback()
         raise HTTPException(
@@ -243,4 +259,4 @@ async def delete_user(
             detail="Failed to delete user"
         ) from e
 
-    return {"detail": "User deleted successfully"}   
+    return {"detail": "Account deactivated successfully"}   

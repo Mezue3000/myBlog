@@ -60,7 +60,7 @@ async def start_registration(
     background_tasks.add_task(send_verification_otp_email, user_data.email, otp, "registration")
 
     return {
-        "message": "Registration started. If the email exists, a verification code has been sent.",
+        "message": "Registration started. If the email exists, a verification code has been sent."
     }
 
     

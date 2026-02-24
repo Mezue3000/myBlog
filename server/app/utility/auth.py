@@ -315,7 +315,80 @@ async def logout_all_devices_for_user(user_id: str) -> int:
         },
     )
 
-    return revoked
+    return revoked  
+
+
+
+
+# users ownership verification
+def verify_users_ownership(resource_owner_id: int, current_user: User):
+    """
+    Checks if the current user is the owner OR a superadmin group.
+    """
+    # superadmin/admin/moderator bypass
+    if current_user.role.name in ["superadmin", "admin", "moderator"]:
+        return True
+        
+    # ownership check
+    if resource_owner_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to modify this resource"
+        )
+        
+    return True
+
+
+
+
+#  create roles hierarchy
+ROLE_HIERARCHY = {
+    "superadmin": 4,
+    "admin": 3,
+    "moderator": 2,
+    "user": 1
+}
+
+
+# admin ownership verification
+def verify_admin_ownership(resource_owner: User, current_user: User):
+    
+    owner_level = ROLE_HIERARCHY[resource_owner.role.name]
+    current_level = ROLE_HIERARCHY[current_user.role.name]
+    
+    # cannot modify someone with higher level
+    if owner_level > current_level:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient privileges"
+        )
+        
+    # cannot modify someone on same level unless self
+    if owner_level == current_level and resource_owner.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify peer-level account"
+        )
+
+    return True
+
+
+
+
+# general permissions verification function
+def require_permission(required_permission: str):
+
+    async def checker(current_user: User = Depends(get_current_user)):
+
+        if required_permission not in current_user["permissions"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient privileges"
+            )
+
+        return current_user
+
+    return checker
 
 
 
