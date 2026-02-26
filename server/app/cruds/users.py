@@ -4,13 +4,13 @@ from app.utility.logging import get_logger
 import logging
 from fastapi_limiter.depends import RateLimiter
 from pydantic import EmailStr
-from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate
+from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
 from app.models import User
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
-from app.utility.security import get_identifier, hash_password, verify_password
+from app.utility.security import get_identifier_factory, hash_password, verify_password
 from app.utility.auth import verify_users_ownership, logout_all_devices_for_user, get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.cores.redis import redis_client
@@ -40,7 +40,12 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
   
   
 # create user update endpoint
-@router.put("/update_user", response_model=UserUpdateRead)
+@router.put(
+    "/update_user", 
+    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_user")))],
+    response_model=UserUpdateRead
+)
+
 async def update_user(
     user_data: UserUpdate, 
     current_user: User = Depends(get_current_user),
@@ -92,14 +97,22 @@ async def update_user(
 
 
 # create endpoint to change user password
-@router.put("/update_password", status_code=status.HTTP_200_OK)
+@router.put(
+    "/update_password", 
+    dependencies=[
+        Depends(
+            RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_password"))
+        )
+    ],
+    status_code=status.HTTP_200_OK
+)
 
 async def update_password(
     payload: UserPasswordUpdate, 
     current_user: User  = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-     # validate ownership rules
+    # validate ownership rules
     verify_users_ownership(current_user.user_id, current_user)
      
     # validate old password
@@ -162,7 +175,7 @@ async def update_password(
 # endpoint to update email
 @router.put( 
     "/update_email", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))],
+    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_email")))],
     status_code=status.HTTP_200_OK
 )
 
@@ -235,21 +248,33 @@ async def complete_email_update(
     return{"detail": "Email updated succesfully"} 
 
 
-
-
+ 
 # create endpoint to delete user
-@router.delete("/delete_user", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/delete_user", 
+    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier_factory("delete_user")))],
+    status_code=status.HTTP_200_OK
+)
 
 async def soft_delete_user(
+    data: DeleteUserRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # verify password belong to the owner
+    if not verify_password(data.password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Deactivation aborted."
+        )
+        
     # validate ownership rules
     verify_users_ownership(current_user.user_id, current_user)
     
     try:
         current_user.is_active = False 
         db.add(current_user)
+        await logout_all_devices_for_user(current_user.user_id)
         await db.commit()
         await db.refresh(current_user)
     except SQLAlchemyError as e:

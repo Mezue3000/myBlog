@@ -168,3 +168,10 @@ class TwoFAChallenge(SQLModel):
 class TwoFAVerify(SQLModel): 
     otp: str
     remember_device: bool = False
+
+
+
+
+# schema to delete user account
+class DeleteUserRequest(SQLModel):
+    password: str

@@ -331,7 +331,6 @@ async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = 
 # create refresh token endpoint
 @router.post("/refresh_token")
 async def refresh_token(request: Request, response: Response):
-    print("Cookies received:", request.cookies)
     old_refresh_token = request.cookies.get("refresh_token")
 
     if not old_refresh_token:
@@ -363,7 +362,6 @@ async def refresh_token(request: Request, response: Response):
     try:
         payload = json.loads(token_data)
         user_id = payload["user_id"]
-        # role = payload["role"]
     except (KeyError, json.JSONDecodeError):
         await log_refresh_failure(request, reason="corrupt_data")
         raise HTTPException(

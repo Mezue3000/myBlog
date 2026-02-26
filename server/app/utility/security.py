@@ -4,7 +4,7 @@ from pwdlib import PasswordHash
 import asyncio
 from fastapi import Request
 from fastapi import Request, Depends
-from app.utility.auth import get_current_user  
+from app.utility.auth import get_current_active_user  
 from app.models import User 
 
 
@@ -41,11 +41,11 @@ async def get_identifier(request: Request):
 
 
 
-# key function to identify authenticated users by id
+# key function to identify authenticated users by id(rate-limiter)
 def get_identifier_factory(action: str):
-    async def identifier(request: Request, user: User = Depends(get_current_user)) -> str:
+    async def identifier(request: Request, user: User = Depends(get_current_active_user)) -> str:
         if user:
-            return f"user:{user.id}:{action}"
+            return f"user:{user.user_id}:{action}"
         
         # fallback for unauthenticated requests
         ip = request.headers.get("x-forwarded-for")
@@ -54,6 +54,7 @@ def get_identifier_factory(action: str):
             ip = ip.split(",")[0].strip()
         else:
             ip = request.client.host or "unknown"
+            
         return f"ip:{ip}:{action}"
     
     return identifier
