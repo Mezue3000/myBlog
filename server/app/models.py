@@ -1,11 +1,11 @@
 # import dependencies
 # from __future__ import annotations
-from sqlmodel import SQLModel, Field, Relationship, func, Index
-from typing import Optional, List
+from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey 
+from sqlalchemy import ForeignKey
 
 
 
@@ -70,7 +70,19 @@ class User(SQLModel, table=True):
     role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
     # create relationship
     role: Optional[Role] = Relationship(back_populates="users")
-    posts: Mapped[List["Post"]] = Relationship(back_populates="user")   
+    posts: Mapped[List["Post"]] = Relationship(back_populates="user")
+    
+    # Actions this user performed
+    performed_actions: List["AuditLog"] = Relationship(
+        back_populates="actor",
+        sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
+    )
+
+    # Actions where this user was the target
+    targeted_actions: List["AuditLog"] = Relationship(
+        back_populates="target_user",
+        sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}
+    )
     
 
 
@@ -127,7 +139,51 @@ class Comment(SQLModel, table=True):
     
     
     
-    
+
+# create audit-log model
+class AuditLog(SQLModel, table=True):
+    __tablename__ = "audit_logs"
+
+    audit_id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Who performed the action
+    actor_id: int = Field(foreign_key="users.user_id", index=True)
+
+    # Who was affected (nullable for system events)
+    target_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.user_id",
+        index=True
+    )
+
+    action: str = Field(index=True, max_length=100)
+
+    changes: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_type=JSON,
+        sa_column_kwargs={"nullable": True},
+    )
+
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    actor: Optional["User"] = Relationship(
+        back_populates="performed_actions",
+        sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
+    )
+
+    target_user: Optional["User"] = Relationship(
+        back_populates="targeted_actions",
+        sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}
+    )
+
+
+
+
 # fix forward reference
 RolePermission.model_rebuild()
 Role.model_rebuild()
@@ -135,3 +191,4 @@ Permission.model_rebuild()
 User.model_rebuild()
 Post.model_rebuild()
 Comment.model_rebuild()
+AuditLog.model_rebuild()

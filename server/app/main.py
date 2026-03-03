@@ -17,7 +17,7 @@ from app.cores.exceptions import (
     starlette_http_exception_handler,
     unhandled_exception_handler,
 )
-from app.cruds import users, login
+from app.cruds import users, login, admins
 
 
 
@@ -66,3 +66,4 @@ app.add_middleware(CacheRequestBodyMiddleware)
 # include routers
 app.include_router(login.router)
 app.include_router(users.router)
+app.include_router(admins.router)

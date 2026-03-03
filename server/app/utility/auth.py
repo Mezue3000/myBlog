@@ -341,7 +341,7 @@ def verify_users_ownership(resource_owner_id: int, current_user: User):
 
 
 
-#  create roles hierarchy
+# define roles hierarchy
 ROLE_HIERARCHY = {
     "superadmin": 4,
     "admin": 3,
@@ -352,21 +352,36 @@ ROLE_HIERARCHY = {
 
 # admin ownership verification
 def verify_admin_ownership(resource_owner: User, current_user: User):
-    
-    owner_level = ROLE_HIERARCHY[resource_owner.role.name]
-    current_level = ROLE_HIERARCHY[current_user.role.name]
+
+    def get_level(role_name: Optional[str]) -> int:
+        if not role_name:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail="User has no role assigned"
+            )
+
+        level = ROLE_HIERARCHY.get(role_name)
+        if level is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unknown role '{role_name}' — contact administrator"
+            )
+        return level
+
+    owner_level = get_level(resource_owner.role.name)
+    current_level = get_level(current_user.role.name)
     
     # cannot modify someone with higher level
     if owner_level > current_level:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient privileges"
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Cannot modify a superior account"
         )
-        
+    
     # cannot modify someone on same level unless self
     if owner_level == current_level and resource_owner.user_id != current_user.user_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN, 
             detail="Cannot modify peer-level account"
         )
 
@@ -378,7 +393,7 @@ def verify_admin_ownership(resource_owner: User, current_user: User):
 # general permissions verification function
 def require_permission(required_permission: str):
 
-    async def checker(current_user: User = Depends(get_current_user)):
+    async def checker(current_user: User = Depends(get_current_active_user)):
 
         if required_permission not in current_user["permissions"]:
             raise HTTPException(
@@ -407,17 +422,18 @@ def require_permission(required_permission: str):
 # function to get current user
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+credential_exception = HTTPException(
+    status_code = status.HTTP_401_UNAUTHORIZED, 
+    detail = "Invalid credentials", 
+    headers = {"WWW-Authenticate": "Bearer"})
+    
+expired_token_error = HTTPException(
+    status_code = status.HTTP_401_UNAUTHORIZED,
+    detail = "Session Timeout",
+    headers = {"WWW-Authenticate": "Bearer"})
+    
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
-    credential_exception = HTTPException(
-        status_code = status.HTTP_401_UNAUTHORIZED, 
-        detail = "Invalid credentials", 
-        headers = {"WWW-Authenticate": "Bearer"})
-    
-    expired_token_error = HTTPException(
-        status_code = status.HTTP_401_UNAUTHORIZED,
-        detail = "Session Timeout",
-        headers = {"WWW-Authenticate": "Bearer"})
-    
     try:
         payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
         
