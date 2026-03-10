@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db 
 from sqlmodel import select, or_
 from app.models import User, Role, Permission, RolePermission
-from app.utility.security import get_identifier, hash_password, verify_password
+from app.utility.security import get_identifier, get_identifier, hash_password, verify_password
 from sqlalchemy.exc import IntegrityError
 from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, logout_all_devices_for_user,  ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure, create_trusted_device, is_trusted_device, set_trusted_device_cookie
 import secrets, json, logging
@@ -125,7 +125,7 @@ async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSessio
 # create an endpoint to sign_in and grab token
 @router.post(
     "/token", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))], 
+    dependencies=[Depends(RateLimiter(times=5, minutes=15, identifier=get_identifier))], 
     response_model=Union[Token, TwoFAChallenge]
 )
 
@@ -150,7 +150,7 @@ async def login(
     # Validate user existence
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
+            status_code=status.HTTP_400_BAD_REQUEST, 
             detail="Invalid email/username or password"
         )
         

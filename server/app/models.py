@@ -72,13 +72,13 @@ class User(SQLModel, table=True):
     role: Optional[Role] = Relationship(back_populates="users")
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")
     
-    # Actions this user performed
+    # actions this user performed
     performed_actions: List["AuditLog"] = Relationship(
         back_populates="actor",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
     )
 
-    # Actions where this user was the target
+    # actions where this user was the target
     targeted_actions: List["AuditLog"] = Relationship(
         back_populates="target_user",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}
@@ -104,7 +104,7 @@ class Post(SQLModel, table=True):
     user_id: int = Field(
         sa_column=sa.Column(
             sa.Integer,
-            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="RESTRICT"),
+            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="CASCADE"),  
             index=True,
             nullable=False
         ),
@@ -146,31 +146,26 @@ class AuditLog(SQLModel, table=True):
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
 
-    # Who performed the action
+    # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
 
-    # Who was affected (nullable for system events)
-    target_user_id: Optional[int] = Field(
-        default=None,
-        foreign_key="users.user_id",
-        index=True
-    )
+    # who was affected (nullable for system events)
+    target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id", index=True)
 
-    action: str = Field(index=True, max_length=100)
+    action: str = Field(index=True, max_length=50)
 
-    changes: Optional[Dict[str, Any]] = Field(
-        default=None,
-        sa_type=JSON,
-        sa_column_kwargs={"nullable": True},
-    )
+    changes: Optional[Dict[str, Any]] = Field(default=None, sa_type=JSON, sa_column_kwargs={"nullable": True})
+    
+    # device + request context
+    ip_address: Optional[str] = Field(default=None, max_length=70)
+    user_agent: Optional[str] = Field(default=None, max_length=180)
+   
+    # request metadata
+    endpoint: Optional[str] = Field(default=None, max_length=70)
 
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
 
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        nullable=False
-    )
-
-    # Relationships
+    # relationships
     actor: Optional["User"] = Relationship(
         back_populates="performed_actions",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
@@ -178,7 +173,7 @@ class AuditLog(SQLModel, table=True):
 
     target_user: Optional["User"] = Relationship(
         back_populates="targeted_actions",
-        sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}
+        sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"} 
     )
 
 

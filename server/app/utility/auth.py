@@ -350,13 +350,18 @@ ROLE_HIERARCHY = {
 }
 
 
-# admin ownership verification
-def verify_admin_ownership(resource_owner: User, current_user: User):
 
+# admin ownership verifiction
+def verify_admin_ownership(
+    resource_owner: User,
+    current_user: User,
+    new_role_name: Optional[str] = None
+) -> None:
+    
     def get_level(role_name: Optional[str]) -> int:
         if not role_name:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="User has no role assigned"
             )
 
@@ -370,25 +375,28 @@ def verify_admin_ownership(resource_owner: User, current_user: User):
 
     owner_level = get_level(resource_owner.role.name)
     current_level = get_level(current_user.role.name)
-    
-    # cannot modify someone with higher level
-    if owner_level > current_level:
+
+    # cannot modify superior or equal-level account (unless self)
+    if owner_level >= current_level:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot modify a superior account"
         )
-    
-    # cannot modify someone on same level unless self
-    if owner_level == current_level and resource_owner.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Cannot modify peer-level account"
-        )
 
-    return True
+    # prevent role escalation
+    if new_role_name:
+        new_role_level = get_level(new_role_name)
+
+        # cannot assign equal or higher role than yourself
+        if new_role_level >= current_level:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot assign this role"
+            )
+    return None
 
 
-
+ 
 
 # general permissions verification function
 def require_permission(required_permission: str):
@@ -406,6 +414,7 @@ def require_permission(required_permission: str):
     return checker
 
 
+# current_user: User = Depends(require_permission("activate_user"))
 
 
 # testing the function    

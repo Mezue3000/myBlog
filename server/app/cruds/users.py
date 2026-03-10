@@ -252,7 +252,7 @@ async def complete_email_update(
 # create endpoint to delete user
 @router.delete(
     "/delete_user", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier_factory("delete_user")))],
+    dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],
     status_code=status.HTTP_200_OK
 )
 

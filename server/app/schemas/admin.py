@@ -2,7 +2,7 @@
 from sqlmodel import SQLModel
 from datetime import datetime
 from pydantic import EmailStr, ConfigDict
-from typing import List
+from typing import List, Optional 
 
 
 
@@ -26,3 +26,24 @@ class PaginatedUsers(SQLModel):
     page: int
     size: int
     total_pages: int
+
+
+ 
+
+# schema to update user fields
+class UserUpdate(SQLModel):
+    username: Optional[str] = None
+    biography: Optional[str] = None
+    country: Optional[str] = None
+    city: Optional[str] = None
+     
+     
+     
+
+
+class UserUpdateRead(UserRead):
+    updated_at: datetime
+    
+    
+    model_config = ConfigDict(from_attributes=True)
+    
