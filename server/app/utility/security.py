@@ -31,12 +31,19 @@ async def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 
-
-# key function to identify users by email or username(rate-limiter)
-async def get_identifier(request: Request):
-    data = getattr(request.state, "body_data", {}) or {}
-    identifier = data.get("email") or data.get("username") or request.client.host
-    return identifier
+# key function to identify users by email/username and ip-address(rate-limiter)
+async def get_identifier(request: Request) -> str:
+    body_data = getattr(request.state, "body_data", {}) or {}
+    
+    prefix = request.client.host or "unknown_ip"
+    
+    if email := body_data.get("email"):
+        return f"{prefix}:{email}"
+    
+    if username := body_data.get("username"):
+        return f"{prefix}:{username}"
+    
+    return prefix
 
 
 

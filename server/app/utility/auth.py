@@ -414,7 +414,24 @@ def require_permission(required_permission: str):
     return checker
 
 
+
 # current_user: User = Depends(require_permission("activate_user"))
+
+
+# function to extract metadata for audit-log
+def build_audit_context(request: Request):
+    # extract metadatas
+    ip_address = request.headers.get("x-forwarded-for", request.client.host)
+    user_agent = request.headers.get("user-agent")
+    endpoint = request.url.path
+
+    return {
+        "ip_address": ip_address,
+        "user_agent": user_agent,
+        "endpoint": endpoint,
+    }
+
+
 
 
 # testing the function    
@@ -432,8 +449,8 @@ def require_permission(required_permission: str):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 credential_exception = HTTPException(
-    status_code = status.HTTP_401_UNAUTHORIZED, 
-    detail = "Invalid credentials", 
+    status_code = status.HTTP_404_NOT_FOUND, 
+    detail = "User not found", 
     headers = {"WWW-Authenticate": "Bearer"})
     
 expired_token_error = HTTPException(
@@ -469,7 +486,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     result = await db.exec(statement)
     user = result.first()
     
-    if user is None:
+    if not user or user.is_deleted:
         raise credential_exception
     return user 
  
@@ -478,6 +495,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
 
 # function to get active users
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    # check if the account is merely inactive/suspended
     if not current_user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive or suspended")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Account is inactive or suspended"
+        )
     return current_user

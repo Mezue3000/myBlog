@@ -14,7 +14,7 @@ from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
 from app.utility.security import get_identifier_factory, hash_password, verify_password
-from app.utility.auth import verify_admin_ownership, get_current_active_user, logout_all_devices_for_user
+from app.utility.auth import verify_admin_ownership, get_current_active_user, logout_all_devices_for_user, build_audit_context
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
@@ -242,14 +242,18 @@ async def admin_update_user(
     # commit transaction + audit log
     try:
         db.add(target_user)
-
+        
+        # extract metadata
+        context = build_audit_context(request)
+        
         # only log if something changed
         if changes:
             audit_entry = AuditLog(
                 actor_id=current_user.user_id,
                 target_user_id=target_user.user_id,
                 action="UPDATE_USER",
-                changes=changes
+                changes=changes,
+                **context
             )
             db.add(audit_entry)
 
@@ -332,6 +336,9 @@ async def admin_deactivate_user(
 
         # force logout (invalidate sessions)
         await logout_all_devices_for_user(target_user.user_id)
+        
+        # extract metadata
+        context = build_audit_context(request)
 
         # audit log
         audit_entry = AuditLog(
@@ -343,7 +350,8 @@ async def admin_deactivate_user(
                     "old": True,
                     "new": False
                 }
-            }
+            },
+            **context
         )
 
         db.add(audit_entry)
@@ -424,6 +432,9 @@ async def admin_activate_user(
         target_user.is_active = True
         db.add(target_user)
 
+        # extract metadata
+        context = build_audit_context(request)
+
         # audit log
         audit_entry = AuditLog(
             actor_id=current_user.user_id,
@@ -434,7 +445,8 @@ async def admin_activate_user(
                     "old": False,
                     "new": True
                 }
-            }
+            },
+            **context
         )
 
         db.add(audit_entry)

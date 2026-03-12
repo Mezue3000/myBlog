@@ -60,6 +60,7 @@ class User(SQLModel, table=True):
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
+    is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
@@ -104,7 +105,7 @@ class Post(SQLModel, table=True):
     user_id: int = Field(
         sa_column=sa.Column(
             sa.Integer,
-            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="CASCADE"),  
+            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="RESTRICT"),  
             index=True,
             nullable=False
         ),

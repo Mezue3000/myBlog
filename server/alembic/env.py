@@ -44,7 +44,7 @@ if config.config_file_name is not None:
 
 
 # import your models
-from app.models import RolePermission, Role, Permission, User, Post, Comment 
+from app.models import RolePermission, Role, Permission, User, Post, Comment, AuditLog
 target_metadata = SQLModel.metadata
 
 

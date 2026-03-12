@@ -22,7 +22,7 @@ from app.cores.redis import redis_client
 logger = get_logger("auth")
 
 # initialize router
-router = APIRouter(tags=["users"], dependencies=[Depends(get_current_active_user)])
+router = APIRouter(tags=["users"], dependencies=[Depends(get_current_active_user)]) 
 
 # create endpoint to retrieve username
 @router.get("/get_username")
@@ -52,7 +52,7 @@ async def update_user(
     db: AsyncSession = Depends(get_db), 
 ):
     update_fields = user_data.model_dump(exclude_unset=True)
-    
+      
     # check ownership rules
     verify_users_ownership(current_user.user_id, current_user)
     
@@ -249,14 +249,14 @@ async def complete_email_update(
 
 
  
-# create endpoint to delete user
+# create endpoint to soft_delete user
 @router.delete(
     "/delete_user", 
     dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],
     status_code=status.HTTP_200_OK
 )
 
-async def soft_delete_user(
+async def delete_user(
     data: DeleteUserRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -265,14 +265,14 @@ async def soft_delete_user(
     if not verify_password(data.password, current_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Deactivation aborted."
+            detail="Incorrect password. Deletion aborted."
         )
         
     # validate ownership rules
     verify_users_ownership(current_user.user_id, current_user)
     
     try:
-        current_user.is_active = False 
+        current_user.is_deleted = True
         db.add(current_user)
         await logout_all_devices_for_user(current_user.user_id)
         await db.commit()
@@ -284,4 +284,4 @@ async def soft_delete_user(
             detail="Failed to delete user"
         ) from e
 
-    return {"detail": "Account deactivated successfully"}   
+    return {"detail": "Account deleted successfully"}   
