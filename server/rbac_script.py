@@ -20,12 +20,14 @@ PERMISSIONS = {
         "user:delete",
         "role:assign",
     ],
+    
     "post": [
         "post:create",
         "post:update",
         "post:delete",
         "post:publish",
     ],
+    
     "comment": [
         "comment:create",
         "comment:delete",

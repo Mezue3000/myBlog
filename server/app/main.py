@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from app.utility.logging import setup_logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from app.models import AuditLog
+from sqlalchemy import event 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi_limiter import FastAPILimiter
 from app.cores.redis import redis_client
@@ -26,8 +28,18 @@ from app.cruds import users, login, admins
 # load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
-
 setup_logging()
+
+
+# add event listener to prevent delete/upgrade audit table
+@event.listens_for(AuditLog, "before_update")
+def prevent_update(mapper, connection, target):
+    raise ValueError("Audit logs cannot be modified")
+
+@event.listens_for(AuditLog, "before_delete")
+def prevent_delete(mapper, connection, target):
+    raise ValueError("Audit logs cannot be deleted")
+
 
 
 

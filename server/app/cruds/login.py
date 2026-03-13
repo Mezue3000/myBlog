@@ -1,5 +1,6 @@
 # import necessary dependencies
 from app.utility.logging import get_logger
+from urllib import request
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, BackgroundTasks
 from fastapi_limiter.depends import RateLimiter
 from app.schemas.jwts import Token
@@ -9,10 +10,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
 from app.utility.database import get_db 
 from sqlmodel import select, or_
-from app.models import User, Role, Permission, RolePermission
+from app.models import User, Role, Permission, RolePermission, AuditLog
 from app.utility.security import get_identifier, get_identifier, hash_password, verify_password
 from sqlalchemy.exc import IntegrityError
-from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, logout_all_devices_for_user,  ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure, create_trusted_device, is_trusted_device, set_trusted_device_cookie
+from app.utility.auth import create_access_token, create_refresh_token, rotate_refresh_token, logout_all_devices_for_user,  ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, set_auth_cookies, log_refresh_failure, create_trusted_device, is_trusted_device, set_trusted_device_cookie, build_audit_context
 import secrets, json, logging
 from app.cores.redis import redis_client
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
@@ -125,7 +126,7 @@ async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSessio
 # create an endpoint to sign_in and grab token
 @router.post(
     "/token", 
-    dependencies=[Depends(RateLimiter(times=5, minutes=15, identifier=get_identifier))], 
+    dependencies=[Depends(RateLimiter(times=3, minutes=15, identifier=get_identifier))], 
     response_model=Union[Token, TwoFAChallenge]
 )
 
@@ -157,11 +158,6 @@ async def login(
     # validate deleted user
     if user.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    # validate active user
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
-    
     
     # validate password
     verified_password = await verify_password(password, user.password_hash)
@@ -307,6 +303,22 @@ async def confirm_password_reset(data: PasswordResetConfirm, db: AsyncSession = 
     try:
         user.password_hash = await hash_password(data.new_password)
         db.add(user)
+        
+        # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=user.user_id,
+            target_user_id=user.user_id,
+            action="PASSWORD_RESET_CONFIRM",
+            changes={
+                "password": "[REDACTED]"
+            },
+            **context
+        )
+
+        db.add(audit_entry)
         await db.commit()
     except Exception as e:
         await db.rollback()     

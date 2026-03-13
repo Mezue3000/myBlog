@@ -1,5 +1,6 @@
 # import dependencies
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
+from urllib import request
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response, Request
 from app.utility.logging import get_logger
 import logging
 from fastapi_limiter.depends import RateLimiter
@@ -8,13 +9,12 @@ from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_
-from app.models import User
+from app.models import User, AuditLog
 from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
 from app.utility.security import get_identifier_factory, hash_password, verify_password
-from app.utility.auth import verify_users_ownership, logout_all_devices_for_user, get_current_user, get_current_active_user
+from app.utility.auth import verify_users_ownership, logout_all_devices_for_user, get_current_user, get_current_active_user, build_audit_context
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.cores.redis import redis_client
-
 
 
 
@@ -22,7 +22,7 @@ from app.cores.redis import redis_client
 logger = get_logger("auth")
 
 # initialize router
-router = APIRouter(tags=["users"], dependencies=[Depends(get_current_active_user)]) 
+router = APIRouter(tags=["users"]) 
 
 # create endpoint to retrieve username
 @router.get("/get_username")
@@ -40,7 +40,7 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
   
   
 # create user update endpoint
-@router.put(
+@router.patch(
     "/update_user", 
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_user")))],
     response_model=UserUpdateRead
@@ -97,7 +97,7 @@ async def update_user(
 
 
 # create endpoint to change user password
-@router.put(
+@router.patch(
     "/update_password", 
     dependencies=[
         Depends(
@@ -109,7 +109,7 @@ async def update_user(
 
 async def update_password(
     payload: UserPasswordUpdate, 
-    current_user: User  = Depends(get_current_active_user),
+    current_user: User  = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # validate ownership rules
@@ -133,6 +133,22 @@ async def update_password(
     # update and save      
     try:
         db.add(current_user)
+        
+        # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+            action="UPDATE_PASSWORD",
+            changes={
+                "password": "[REDACTED]"
+            },
+            **context
+        )
+
+        db.add(audit_entry)
         await db.commit()
         await db.refresh(current_user)
 
@@ -141,7 +157,7 @@ async def update_password(
 
         logger.warning(
            "Integrity error while updating password",
-            extra={"user_id": current_user.id},
+            extra={"user_id": current_user.user_id},
         )
 
         raise HTTPException(
@@ -153,7 +169,7 @@ async def update_password(
         await db.rollback()
         logger.exception(
             "Database error while updating password",
-             extra={"user_id": current_user.id},
+             extra={"user_id": current_user.user_id},
         )
 
         raise HTTPException(
@@ -173,7 +189,7 @@ async def update_password(
      
      
 # endpoint to update email
-@router.put( 
+@router.patch( 
     "/update_email", 
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_email")))],
     status_code=status.HTTP_200_OK
@@ -182,7 +198,7 @@ async def update_password(
 async def update_email(
     user: EmailUpdate,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     # validate ownership rules
@@ -223,7 +239,7 @@ async def update_email(
 
 async def complete_email_update(
     otp_code: str, 
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession=Depends(get_db)
 ): 
     # validate ownership rules
@@ -231,14 +247,36 @@ async def complete_email_update(
     
     # verify otp
     try: 
-        email = verify_email_otp(otp_code=otp_code, scope="update")
+        new_email = verify_email_otp(otp_code=otp_code, scope="update")
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     
+    # capture old data for the Audit Log
+    old_email = current_user.email
+    
     # update and safe
     try:
-        current_user.email = email
+        current_user.email = new_email
         db.add(current_user)
+        
+        # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+            action="UPDATE_EMAIL",
+            changes={
+                "email": {
+                    "old": old_email,
+                    "new": new_email
+                }
+            },
+            **context
+        )
+
+        db.add(audit_entry)
         await db.commit()
         await db.refresh(current_user)
     except IntegrityError:
@@ -250,7 +288,7 @@ async def complete_email_update(
 
  
 # create endpoint to soft_delete user
-@router.delete(
+@router.patch(
     "/delete_user", 
     dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],
     status_code=status.HTTP_200_OK
@@ -275,6 +313,25 @@ async def delete_user(
         current_user.is_deleted = True
         db.add(current_user)
         await logout_all_devices_for_user(current_user.user_id)
+        
+         # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+            action="DELETE_USER",
+            changes={
+                "is_deleted": {
+                    "old": False,
+                    "new": True
+                }
+            },
+            **context
+        )
+
+        db.add(audit_entry)
         await db.commit()
         await db.refresh(current_user)
     except SQLAlchemyError as e:
@@ -284,4 +341,4 @@ async def delete_user(
             detail="Failed to delete user"
         ) from e
 
-    return {"detail": "Account deleted successfully"}   
+    return {"detail": "Account deleted successfully"}

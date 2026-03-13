@@ -44,6 +44,7 @@ async def get_users_paginated(
     search: Annotated[Optional[str], Query(description="Search by username or email")] = None,
     # add more filters
     is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
+    is_deleted: Annotated[Optional[bool], Query(description="Filter by delete status")] = None,
     country: Annotated[Optional[str], Query(description="Filter by country")] = None,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -82,6 +83,9 @@ async def get_users_paginated(
     if country is not None:
         filters.append(User.country == country)
 
+    if is_deleted is not None:
+        filters.append(User.country == is_deleted)
+        
     # strict downward visibility
     allowed_roles = [
         role_name
@@ -333,9 +337,6 @@ async def admin_deactivate_user(
         # deactivate account
         target_user.is_active = False
         db.add(target_user)
-
-        # force logout (invalidate sessions)
-        await logout_all_devices_for_user(target_user.user_id)
         
         # extract metadata
         context = build_audit_context(request)
@@ -461,3 +462,194 @@ async def admin_activate_user(
         ) from e
 
     return {"detail": "User account activated successfully"} 
+
+
+
+
+# admin delete user endpoint
+@router.patch(
+    "/users/{user_id}/delete",
+    dependencies=[
+        Depends(
+            RateLimiter(
+                times=5,
+                minutes=10,
+                identifier=get_identifier_factory("admin_delete_user")
+            )
+        )
+    ],
+    status_code=status.HTTP_200_OK
+)
+
+async def admin_delete_user(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # fetch target user
+    stmt = (
+        select(User)
+        .where(User.user_id == user_id)
+        .options(selectinload(User.role))
+    )
+
+    target_user = (await db.exec(stmt)).first()
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # prevent self deletion
+    if current_user.user_id == target_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account"
+        )
+
+    # enforce hierarchy rules
+    verify_admin_ownership(
+        resource_owner=target_user,
+        current_user=current_user
+    )
+
+    # prevent double deletion
+    if target_user.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account already deleted"
+        )
+
+    try:
+        # delete account
+        target_user.is_deleted = True
+        db.add(target_user)
+
+        # force logout (invalidate sessions)
+        await logout_all_devices_for_user(target_user.user_id)
+        
+        # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=current_user.user_id,
+            target_user_id=target_user.user_id,
+            action="DELETE_USER",
+            changes={
+                "is_deleted": {
+                    "old": False,
+                    "new": True
+                }
+            },
+            **context
+        )
+
+        db.add(audit_entry)
+
+        await db.commit()
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user"
+        ) from e
+
+    return {"detail": "User account deleted successfully"} 
+
+
+
+
+# admin restore user endpoint
+@router.patch(
+    "/users/{user_id}/restore",
+    dependencies=[
+        Depends(
+            RateLimiter(
+                times=5,
+                minutes=10,
+                identifier=get_identifier_factory("admin_restore_user")
+            )
+        )
+    ],
+    status_code=status.HTTP_200_OK
+)
+
+async def admin_restore_user(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # fetch target user
+    stmt = (
+        select(User)
+        .where(User.user_id == user_id)
+        .options(selectinload(User.role))
+    )
+
+    target_user = (await db.exec(stmt)).first()
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # prevent self restoration
+    if current_user.user_id == target_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot restore your own account"
+        )
+
+    # enforce hierarchy rules
+    verify_admin_ownership(
+        resource_owner=target_user,
+        current_user=current_user
+    )
+
+    # prevent double activation
+    if target_user.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account is alive"
+        )
+
+    try:
+        # restore account
+        target_user.is_deleted = False
+        db.add(target_user)
+
+        # extract metadata
+        context = build_audit_context(request)
+
+        # audit log
+        audit_entry = AuditLog(
+            actor_id=current_user.user_id,
+            target_user_id=target_user.user_id,
+            action="RESTORE_USER",
+            changes={
+                "is_deleted": {
+                    "old": True,
+                    "new": False
+                }
+            },
+            **context
+        )
+
+        db.add(audit_entry)
+
+        await db.commit()
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to restore user"
+        ) from e
+
+    return {"detail": "User account restored successfully"} 
