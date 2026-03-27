@@ -45,6 +45,7 @@ class UserCreate(UserBase):
 
 
 
+
 # schema for reading user
 class UserRead(UserBase):
     user_id: int
@@ -167,7 +168,7 @@ class TwoFAChallenge(SQLModel):
 # schema for otp verification
 class TwoFAVerify(SQLModel): 
     otp: str
-    remember_device: bool = False
+    remember_device: bool = True
 
 
 

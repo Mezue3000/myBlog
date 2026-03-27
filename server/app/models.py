@@ -10,7 +10,7 @@ from sqlalchemy import ForeignKey
 
 
 
-# create link table(m-m r/ship)
+# create link table(m-m relationship) 
 class RolePermission(SQLModel, table=True):
     __tablename__ = "role_permissions"
 

@@ -4,7 +4,7 @@ from pwdlib import PasswordHash
 import asyncio
 from fastapi import Request
 from fastapi import Request, Depends
-from app.utility.auth import get_current_active_user  
+from server.app.utility.user_service import get_current_active_user  
 from app.models import User 
 
 

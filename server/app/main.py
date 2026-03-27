@@ -31,7 +31,7 @@ from app.cruds import users, login, admins
 setup_logging()
 
 
-# add event listener to prevent delete/upgrade audit table
+# add event listener to prevent delete/upgrade of audit table
 @event.listens_for(AuditLog, "before_update")
 def prevent_update(mapper, connection, target):
     raise ValueError("Audit logs cannot be modified")

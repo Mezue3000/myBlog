@@ -1,20 +1,14 @@
 # import dependencies
-from urllib import request
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response, Request
+from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
 from app.utility.logging import get_logger
-import logging
 from fastapi_limiter.depends import RateLimiter
-from pydantic import EmailStr
-from app.schemas.users import EmailRequest, UserRead, UserCreate, UserBase, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest
+from app.schemas.users import EmailRequest, UserRead, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
-from sqlmodel import select, or_
-from app.models import User, AuditLog
-from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
-from app.utility.security import get_identifier_factory, hash_password, verify_password
-from app.utility.auth import verify_users_ownership, logout_all_devices_for_user, get_current_user, get_current_active_user, build_audit_context
+from app.models import User
+from app.utility.security import get_identifier_factory
+from app.utility.user_service import get_current_user, get_current_active_user, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from app.cores.redis import redis_client
 
 
 
@@ -32,10 +26,11 @@ async def get_username(current_user: User = Depends(get_current_user)):
   
   
   
-# create endpoint to retrieve user info
+# create endpoint to retrieve user info...
 @router.get("/read_user", response_model=UserRead) 
 async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return current_user 
+  
   
   
   
@@ -51,47 +46,7 @@ async def update_user(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db), 
 ):
-    update_fields = user_data.model_dump(exclude_unset=True)
-      
-    # check ownership rules
-    verify_users_ownership(current_user.user_id, current_user)
-    
-    # Check for duplicate username
-    if "username" in update_fields:
-        stmt_username = select(User).where(User.username == update_fields["username"])
-        result = await db.exec(stmt_username)
-        existing_user = result.first() 
-    if existing_user and existing_user.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken."
-        )
-
-    # Check for duplicate email
-    if "email" in update_fields:
-       stmt_email = select(User).where(User.email == update_fields["email"])
-       result = await db.exec(stmt_email)
-       existing_user = result.first()
-    if existing_user and existing_user.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already in use."
-        )
-
-
-    # Apply updates
-    for key, value in update_fields.items():
-        setattr(current_user, key, value)
-
-    try:
-        db.add(current_user)
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail="Integrity error while updating user.")
-
-    await db.refresh(current_user)
-    return current_user
+    return await update_user_info(user_data=user_data, current_user=current_user, db=db)
 
 
 
@@ -109,86 +64,16 @@ async def update_user(
 
 async def update_password(
     payload: UserPasswordUpdate, 
-    current_user: User  = Depends(get_current_user),
+    request: Request,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # validate ownership rules
-    verify_users_ownership(current_user.user_id, current_user)
-     
-    # validate old password
-    if not await verify_password(payload.old_password, current_user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
+    return await change_password(user=current_user, payload=payload, db=db, request=request) 
     
     
-    # prevent password reuse (extra guard at service level)
-    if await verify_password(payload.new_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must be different from the old password",
-        )
-        
-    # hash and update password
-    current_user.password_hash = await hash_password(payload.new_password)
     
-    # update and save      
-    try:
-        db.add(current_user)
-        
-        # extract metadata
-        context = build_audit_context(request)
-
-        # audit log
-        audit_entry = AuditLog(
-            actor_id=current_user.user_id,
-            target_user_id=current_user.user_id,
-            action="UPDATE_PASSWORD",
-            changes={
-                "password": "[REDACTED]"
-            },
-            **context
-        )
-
-        db.add(audit_entry)
-        await db.commit()
-        await db.refresh(current_user)
-
-    except IntegrityError: 
-        await db.rollback()
-
-        logger.warning(
-           "Integrity error while updating password",
-            extra={"user_id": current_user.user_id},
-        )
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password update violates database constraints",
-        )
-
-    except SQLAlchemyError:
-        await db.rollback()
-        logger.exception(
-            "Database error while updating password",
-             extra={"user_id": current_user.user_id},
-        )
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected database error occurred",
-        )
     
-    # logout all devices
-    await logout_all_devices_for_user(current_user.user_id)
-    
-    return{
-        "status": "Success",
-        "message": "Password updated succesful",
-    }
-
-
-     
-     
-# endpoint to update email
+# endpoint to initiate email update
 @router.patch( 
     "/update_email", 
     dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_email")))],
@@ -196,40 +81,17 @@ async def update_password(
 )
 
 async def update_email(
-    user: EmailUpdate,
+    payload: EmailUpdate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # validate ownership rules
-    verify_users_ownership(current_user.user_id, current_user)
-    
-    new_email = user.new_email.lower().strip()
-
-    # check if new email already exists
-    result = await db.exec(select(User).where(User.email == new_email))
-    existing_email = result.first()
-
-    if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists",
-        )
-
-    # verify password
-    if not await verify_password(user.password, current_user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password incorrect")
-
-    # generate OTP
-    otp = await create_email_otp(email=new_email, scope="update")
-
-    # send verification email in background
-    background_tasks.add_task(send_verification_otp_email, email=new_email, otp=otp, scope="update")
-
-    return {
-        "status": "success",
-        "message": "Verification code sent to your new email address",  
-    }
+    return await initiate_email_update(
+        payload=payload,
+        background_tasks=background_tasks,
+        user=current_user,
+        db=db
+    )
 
 
 
@@ -239,55 +101,16 @@ async def update_email(
 
 async def complete_email_update(
     otp_code: str, 
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession=Depends(get_db)
 ): 
-    # validate ownership rules
-    verify_users_ownership(current_user.user_id, current_user)
-    
-    # verify otp
-    try: 
-        new_email = verify_email_otp(otp_code=otp_code, scope="update")
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    
-    # capture old data for the Audit Log
-    old_email = current_user.email
-    
-    # update and safe
-    try:
-        current_user.email = new_email
-        db.add(current_user)
-        
-        # extract metadata
-        context = build_audit_context(request)
-
-        # audit log
-        audit_entry = AuditLog(
-            actor_id=current_user.user_id,
-            target_user_id=current_user.user_id,
-            action="UPDATE_EMAIL",
-            changes={
-                "email": {
-                    "old": old_email,
-                    "new": new_email
-                }
-            },
-            **context
-        )
-
-        db.add(audit_entry)
-        await db.commit()
-        await db.refresh(current_user)
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail="Integrity error while updating user.")
-        
-    return{"detail": "Email updated succesfully"} 
-
-
- 
-# create endpoint to soft_delete user
+   return await finalize_email_update(otp_code=otp_code, user=current_user, db=db, request=request)
+   
+   
+   
+   
+# create endpoint to delete user account
 @router.patch(
     "/delete_user", 
     dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],
@@ -296,49 +119,8 @@ async def complete_email_update(
 
 async def delete_user(
     data: DeleteUserRequest,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # verify password belong to the owner
-    if not verify_password(data.password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Deletion aborted."
-        )
-        
-    # validate ownership rules
-    verify_users_ownership(current_user.user_id, current_user)
-    
-    try:
-        current_user.is_deleted = True
-        db.add(current_user)
-        await logout_all_devices_for_user(current_user.user_id)
-        
-         # extract metadata
-        context = build_audit_context(request)
-
-        # audit log
-        audit_entry = AuditLog(
-            actor_id=current_user.user_id,
-            target_user_id=current_user.user_id,
-            action="DELETE_USER",
-            changes={
-                "is_deleted": {
-                    "old": False,
-                    "new": True
-                }
-            },
-            **context
-        )
-
-        db.add(audit_entry)
-        await db.commit()
-        await db.refresh(current_user)
-    except SQLAlchemyError as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user"
-        ) from e
-
-    return {"detail": "Account deleted successfully"}
+   return await delete_user_account(data=data, current_user=current_user, db=db, request=request)
