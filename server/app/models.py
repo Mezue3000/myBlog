@@ -73,13 +73,13 @@ class User(SQLModel, table=True):
     role: Optional[Role] = Relationship(back_populates="users")
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")
     
-    # actions this user performed
+    # actions, this user performed
     performed_actions: List["AuditLog"] = Relationship(
         back_populates="actor",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
     )
 
-    # actions where this user was the target
+    # actions, where this user was the target
     targeted_actions: List["AuditLog"] = Relationship(
         back_populates="target_user",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}

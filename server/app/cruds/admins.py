@@ -1,28 +1,22 @@
 # import dependencies
-from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks, Response, Request
-from app.utility.logging import get_logger
-import logging
+from fastapi import APIRouter, Depends, Query, status, Response, Request
+from app.cores.logging import get_logger
 from fastapi_limiter.depends import RateLimiter
-from math import ceil
 from typing import Annotated, Optional
-from pydantic import EmailStr
 from app.schemas.admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
-from sqlalchemy.orm import selectinload 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.database import get_db
 from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
-from app.utility.email_auth import create_email_otp, send_verification_otp_email, verify_email_otp
 from app.utility.security import get_identifier_factory, hash_password, verify_password
-from app.utility.user_service import get_current_active_user
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from app.utility.admin_service import get_paginated, admin_change_user, admins_deactivate_user, admins_activate_user, admin_delete_user_account, admin_restore_user_account
+from app.utility.user import get_current_active_user
+from app.services.admin import get_paginated, admin_change_user, admins_deactivate_user, admins_activate_user, admin_delete_user_account, admin_restore_user_account
 
 
 
 
 # initialize logger
-logger = get_logger("auth")
+logger = get_logger(__name__)
 
 
 # initialize router
@@ -79,7 +73,7 @@ async def admin_update_user(
     db: AsyncSession = Depends(get_db),
 ):
     return await admin_change_user(
-        user_data=user_id,
+        user_id=user_id,
         request=request,
         user_data=user_data,
         current_user=current_user,
@@ -208,4 +202,4 @@ async def admin_restore_user(
        request=request,
        current_user=current_user,
        db=db
-   )
+    )

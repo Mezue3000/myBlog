@@ -1,6 +1,5 @@
 # import dependencies
-import logging
-import sys
+import logging, sys
 from logging.config import dictConfig
 from typing import Any, Dict
 

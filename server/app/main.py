@@ -1,6 +1,6 @@
 # import dependencies
-from dotenv import load_dotenv
-from app.utility.logging import setup_logging
+# from dotenv import load_dotenv
+from app.cores.logging import setup_logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from app.models import AuditLog

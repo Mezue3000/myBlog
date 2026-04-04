@@ -1,15 +1,13 @@
 # import dependencies
 from sqlmodel import SQLModel
-import asyncmy
+import asyncmy, os, asyncio
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
-import os
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from app.models import User, Post, Comment
-import asyncio  
  
 
 

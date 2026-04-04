@@ -1,10 +1,9 @@
 # import dependencies
-import logging
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
-from app.utility.logging import get_logger
+from app.cores.logging import get_logger
 
 
 logger = get_logger(__name__)
@@ -59,7 +58,7 @@ async def starlette_http_exception_handler(
 
 
 
-# Unhandled / unexpected exceptions
+# Unhandled/unexpected exceptions
 async def unhandled_exception_handler(
     request: Request,
     exc: Exception,

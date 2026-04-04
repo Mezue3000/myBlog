@@ -1,6 +1,6 @@
 # import dependencies
 from fastapi import Request, HTTPException, status
-from server.app.utility.user_service import verify_origin
+from app.utility.security import verify_origin
 
 
 
@@ -19,3 +19,14 @@ async def verify_csrf(request: Request):
 
     if csrf_cookie != csrf_header:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token")
+    
+    
+    
+    
+
+# @router.post("/posts", dependencies=[Depends(verify_csrf)])
+# async def create_post(
+#     current_user: User = Depends(get_current_user),
+# ):
+#     return {"detail": "Post created"}
+
