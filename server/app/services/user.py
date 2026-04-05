@@ -15,11 +15,8 @@ from app.utility.auth import extract_refresh_token, get_refresh_token_payload, c
  
 
 
-
 # initialize logging
 logger = get_logger(__name__)
-
-
 
 
 
@@ -115,7 +112,6 @@ async def demand_password_reset(
             background_tasks=background_tasks
         )
 
-    # always return same response (prevent enumeration)
     return {
         "message": "If the email exists, a password reset code has been sent."
     }

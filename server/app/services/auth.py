@@ -1,4 +1,5 @@
 # import dependencies
+from app.cores.logging import get_logger
 from fastapi import BackgroundTasks, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -6,7 +7,6 @@ from app.utility.user import get_user_by_identifier, validate_user_credentials, 
 from app.utility.security import validate_password, build_audit_context, create_auth_audit_log_bg, verify_email_otp
 from app.utility.auth import is_trusted_device, handle_trusted_device_login, handle_2fa_challenge, handle_remember_device, set_auth_cookies, generate_auth_tokens, extract_refresh_token, rotate_refresh_token, get_refresh_token_payload, create_access_token
 from app.schemas.users import TwoFAVerify
-from app.cores.logging import get_logger
 
 
 
@@ -74,10 +74,7 @@ async def confirm_2fa(
     db: AsyncSession
 ):
     # verify OTP → returns email
-    email = await verify_email_otp(
-        otp_code=data.otp,
-        scope="2FA"
-    )
+    email = await verify_email_otp(otp_code=data.otp, scope="2FA")
 
     # fetch user
     user = await get_user_by_email(db, email)
@@ -91,7 +88,7 @@ async def confirm_2fa(
     # set cookies
     set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"], tokens["csrf_token"])
 
-    # remember device (optional)
+    # remember device 
     if data.remember_device:
         await handle_remember_device(user, response)
     
@@ -135,4 +132,4 @@ async def refresh_session_token(request: Request, response: Response):
     # set cookies
     set_auth_cookies(response, access_token, new_refresh_token)
 
-    return {"detail": "Token refreshed"}
+    return {"detail": "Token refreshed"} 

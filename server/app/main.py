@@ -28,6 +28,7 @@ from app.cruds import users, login, admins
 # load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
+# initialize logging
 setup_logging()
 
 
@@ -42,7 +43,7 @@ def prevent_delete(mapper, connection, target):
 
 
 
-
+# add rate-limit
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await FastAPILimiter.init(redis_client)
@@ -78,4 +79,4 @@ app.add_middleware(CacheRequestBodyMiddleware)
 # include routers
 app.include_router(login.router)
 app.include_router(users.router)
-app.include_router(admins.router)
+app.include_router(admins.router) 

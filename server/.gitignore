@@ -3,3 +3,4 @@ __pycache__
 my-venv
 ec_private.pem
 ec_private.pem.enc
+.gitignore

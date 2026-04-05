@@ -1,6 +1,7 @@
 # import dependencies 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
+from app.cores.logging import get_logger
 from typing import Optional
 import json, secrets, os, pyotp, httpx, jwt
 from app.models import User
@@ -8,7 +9,6 @@ from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks, Request, Response
 from app.cores.redis import redis_client
-from app.cores.logging import get_logger
 from app.utility.email import create_email_otp, send_verification_otp_email
 
 
@@ -30,6 +30,10 @@ with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem.enc", "
 DECRYPTED_PRIVATE_KEY = fernet.decrypt(ENCRYPTED_PRIVATE_KEY)
 private_key = serialization.load_pem_private_key(DECRYPTED_PRIVATE_KEY, password=None) 
 
+
+
+# initialize logger
+logger = get_logger(__name__)
 
 
 
@@ -128,8 +132,6 @@ async def rotate_refresh_token(old_token: str) -> Optional[str]:
 
 
 # function to get refresh failures
-logger = get_logger("auth")
-
 async def log_refresh_failure(request, reason: str):
     logger.warning(
         "refresh_failed",
@@ -270,7 +272,7 @@ async def handle_trusted_device_login(user: User, response: Response):
     
     
     
-# fuction to trigger OTP if not trusted
+# fuction to trigger OTP if not trusted device
 async def handle_2fa_challenge(
     user: User,
     background_tasks: BackgroundTasks
@@ -334,10 +336,7 @@ async def extract_refresh_token(request: Request) -> str:
 
 
 # fuction to extact user_id
-async def get_refresh_token_payload(
-    refresh_token: str,
-    request: Request
-) -> dict:
+async def get_refresh_token_payload(refresh_token: str, request: Request) -> dict:
     token_data = await redis_client.get(f"refresh:{refresh_token}")
 
     if not token_data:

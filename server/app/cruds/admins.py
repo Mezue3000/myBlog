@@ -16,7 +16,7 @@ from app.services.admin import get_paginated, admin_change_user, admins_deactiva
 
 
 # initialize logger
-logger = get_logger(__name__)
+logger = get_logger(__name__) 
 
 
 # initialize router
