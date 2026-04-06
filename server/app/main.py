@@ -28,7 +28,7 @@ from app.cruds import users, login, admins
 # load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
-# initialize logging
+# set up logging
 setup_logging()
 
 

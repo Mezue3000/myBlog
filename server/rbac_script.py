@@ -85,9 +85,7 @@ async def seed_rbac():
     async with AsyncSession(async_engine) as session:
         print("Starting RBAC seeding...")
 
-        # ----------------------
-        # 1. Create roles
-        # ----------------------
+        # create roles
         roles = {}
 
         for role_name in ROLES:
@@ -103,9 +101,7 @@ async def seed_rbac():
 
             roles[role_name] = role
 
-        # ----------------------
-        # 2. Create permissions
-        # ----------------------
+        # create permissions
         permissions = {}
 
         for group in PERMISSIONS.values():
@@ -125,9 +121,7 @@ async def seed_rbac():
 
                 permissions[code] = perm
 
-        # ----------------------
-        # 3. Assign permissions
-        # ----------------------
+        # assign permissions
         for role_name, perm_codes in ROLE_PERMISSION_MAP.items():
             role = roles[role_name]
 

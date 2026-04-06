@@ -175,7 +175,7 @@ async def logout_all_devices(request: Request, response: Response):
 
 
 
-# create endpoint to delete user account
+# create endpoint to delete user account(soft-delete)
 @router.patch(
     "/delete_user", 
     dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],

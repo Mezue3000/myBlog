@@ -1,10 +1,12 @@
 # import dependencies
 from app.cores.logging import get_logger
+from dotenv import load_dotenv
 from app.schemas.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
 from app.utility.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
+import os
 from app.models import RolePermission, Role, Permission, User, AuditLog
 from app.utility.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -17,6 +19,11 @@ from app.utility.auth import extract_refresh_token, get_refresh_token_payload, c
 
 # initialize logging
 logger = get_logger(__name__)
+
+
+
+# load environment variable
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env") 
 
 
 
@@ -61,24 +68,26 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
     
     # hash password
     hashed_password = await hash_password(user.password)
-    roleid=16 
+    
+    # get users role id
+    role_id = os.getenv("USERS_ROLE_ID")
 
     # create user
     new_user = User(
-        email=email.lower(),
+        email=email,
         username=user.username.lower(),
         password_hash=hashed_password,
         biography=user.biography,
         country=user.country.lower(),
         city=user.city.lower(),
-        role_id=roleid
+        role_id=role_id
     )
 
     try:
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
-        logger.info("User created successfully: %s", email)
+        logger.info("User created successfully: %s", email) 
     except IntegrityError:
         await db.rollback()
         logger.error("Integrity error during registration for email: %s", email)
@@ -271,7 +280,7 @@ async def change_password(
     
     return{
         "status": "Success",
-        "message": "Password updated succesful",
+        "message": "Password updated succesfully",
     }
 
 
@@ -412,7 +421,7 @@ async def signout_all_devices(
 
 
 
-# function to delete user
+# function to delete user(soft-delete)
 async def delete_user_account(
     data: DeleteUserRequest,
     request: Request,

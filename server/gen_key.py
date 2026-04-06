@@ -18,7 +18,7 @@ private_pem = private_key.private_bytes(
 
 
   
-# Save private key to files
+# save private key to files
 with open("ec_private.pem", "wb") as f:
      f.write(private_pem)
      
@@ -37,7 +37,7 @@ public_key = private_key.public_key()
 
 
 
-# Serialize public key to pem
+# serialize public key to pem
 public_pem = public_key.public_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -45,6 +45,6 @@ public_pem = public_key.public_bytes(
 
 
 
-# Save public key to files
+# save public key to files
 with open("ec_public.pem", "wb") as f:
      f.write(public_pem)

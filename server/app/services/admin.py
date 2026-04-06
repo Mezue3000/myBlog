@@ -18,7 +18,6 @@ logger = get_logger(__name__)
 
 
 
- 
 # function to retrieve users with pagination
 async def get_paginated(
     *,
@@ -128,10 +127,7 @@ async def admin_change_user(
     )
 
     # apply updates + track changes
-    changes = apply_updates_and_track_changes(
-        target_user,
-        update_fields
-    )
+    changes = apply_updates_and_track_changes(target_user, update_fields)
 
     # persist + audit
     await persist_with_audit(
@@ -172,10 +168,7 @@ async def admins_deactivate_user(
     prevent_self_action(current_user, target_user, action="deactivate")
 
     # enforce RBAC hierarchy
-    verify_admin_ownership(
-        resource_owner=target_user,
-        current_user=current_user
-    )
+    verify_admin_ownership(resource_owner=target_user, current_user=current_user)
 
     # prevent redundant operation
     ensure_user_state(
@@ -204,7 +197,7 @@ async def admins_deactivate_user(
 
 
 # function to activate user
-async def admins_activate_user(
+async def admin_get_user_activated( 
     *,
     user_id: int,
     request: Request,
@@ -227,10 +220,7 @@ async def admins_activate_user(
     prevent_self_action(current_user, target_user, action="activate")
 
     # enforce RBAC hierarchy
-    verify_admin_ownership(
-        resource_owner=target_user,
-        current_user=current_user
-    )
+    verify_admin_ownership(resource_owner=target_user, current_user=current_user)
 
     # prevent redundant operation
     ensure_user_state(
@@ -282,10 +272,7 @@ async def admin_delete_user_account(
     prevent_self_action(current_user, target_user, action="delete")
 
     # enforce RBAC hierarchy
-    verify_admin_ownership(
-        resource_owner=target_user,
-        current_user=current_user
-    )
+    verify_admin_ownership(resource_owner=target_user, current_user=current_user)
 
     # prevent duplicate deletion
     ensure_user_state(
@@ -346,10 +333,7 @@ async def admin_restore_user_account(
     prevent_self_action(current_user, target_user, action="restore")
 
     # enforce RBAC hierarchy
-    verify_admin_ownership(
-        resource_owner=target_user,
-        current_user=current_user
-    )
+    verify_admin_ownership(resource_owner=target_user, current_user=current_user)
 
     # prevent duplicate deletion
     ensure_user_state(

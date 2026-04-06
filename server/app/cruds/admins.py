@@ -10,7 +10,7 @@ from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
 from app.utility.security import get_identifier_factory, hash_password, verify_password
 from app.utility.user import get_current_active_user
-from app.services.admin import get_paginated, admin_change_user, admins_deactivate_user, admins_activate_user, admin_delete_user_account, admin_restore_user_account
+from app.services.admin import get_paginated, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account
 
 
 
@@ -45,7 +45,7 @@ async def get_users_paginated(
         country=country,
         current_user=current_user,
         db=db,
-    )
+    ) 
    
     
     
@@ -135,7 +135,7 @@ async def admin_activate_user(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await admins_activate_user(
+    return await admin_get_user_activated(
         user_id=user_id,
         request=request,
         current_user=current_user,
