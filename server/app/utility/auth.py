@@ -81,10 +81,7 @@ async def create_refresh_token(user_id: str) -> str:
     token_key = f"refresh:{token}"
     user_key = f"user_refresh:{user_id}"
 
-    payload = {
-        "user_id": user_id,
-        "refresh_id": refresh_id,
-    }
+    payload = {"user_id": user_id, "refresh_id": refresh_id}
 
     # store token
     await redis_client.setex(token_key, ttl, json.dumps(payload))
@@ -264,10 +261,7 @@ async def handle_trusted_device_login(user: User, response: Response):
 
     set_auth_cookies(response, access_token, refresh_token, csrf_token)
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+    return {"access_token": access_token, "token_type": "bearer"}
     
     
     
@@ -360,7 +354,7 @@ async def get_refresh_token_payload(refresh_token: str, request: Request) -> dic
         
         
  
-# function to clear token cookies
+# function to clear token in cookies
 def clear_auth_cookies(response: Response):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")

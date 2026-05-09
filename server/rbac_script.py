@@ -14,7 +14,7 @@ from server.app.models import User, Role, Permission, RolePermission
 ROLES = ["superadmin", "admin", "moderator", "user"]
 
 PERMISSIONS = {
-    "admin": [
+    "global_admin": [
         "admin:access",
         "user:ban",
         "user:delete",
@@ -43,7 +43,7 @@ ROLE_PERMISSION_MAP = {
     "superadmin": [
         "*",  # wildcard (handled manually)
     ],
-    "admin": [
+    "global_admin": [
         "admin:access",
         "user:ban",
         "user:delete",

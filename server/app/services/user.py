@@ -41,11 +41,11 @@ async def initiate_registration(
     # generate OTP
     otp = await create_email_otp(email=user_data.email, scope="registration")
 
-    # send verificataon email in background
+    # send verification email in background
     background_tasks.add_task(send_verification_otp_email, user_data.email, otp, "registration")
 
     return {
-        "message": "Registration started. If the email exists, a verification code has been sent."
+        "message": "Registration started. If the email exists, a verification code has been sent." 
     }
 
 
@@ -83,7 +83,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         role_id=role_id
     )
 
-    try:
+    try: 
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)

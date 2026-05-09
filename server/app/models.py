@@ -1,11 +1,13 @@
 # import dependencies
 # from __future__ import annotations
-from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON
+from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON, Text
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from uuid import UUID
 from sqlalchemy.orm import Mapped
-import sqlalchemy as sa
+import sqlalchemy as sa, future_uuid
 from sqlalchemy import ForeignKey
+
 
 
 
@@ -16,6 +18,7 @@ class RolePermission(SQLModel, table=True):
 
     role_id: int = Field(foreign_key="roles.role_id", primary_key=True)
     permission_id: int = Field(foreign_key="permissions.permission_id", primary_key=True)
+
 
 
 
@@ -34,6 +37,7 @@ class Role(SQLModel, table=True):
 
 
 
+
 # create permission model
 class Permission(SQLModel, table=True):
     __tablename__ = "permissions"
@@ -42,8 +46,9 @@ class Permission(SQLModel, table=True):
     code: str = Field(index=True, unique=True, max_length=100)
     description: Optional[str] = Field(default=None, max_length=255)
     
-    # relationships
+    # create relationships
     roles: List[Role] = Relationship(back_populates="permissions", link_model=RolePermission)
+
 
 
 
@@ -61,16 +66,20 @@ class User(SQLModel, table=True):
     city: str = Field(max_length=25, nullable=False)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
+    deleted_at: Optional[datetime] = Field(default=None, nullable=True)
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
         nullable=False
     )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
+    
     # add foreign key
     role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
+    
     # create relationship
     role: Optional[Role] = Relationship(back_populates="users")
+    tenant_memberships: List["TenantMembership"] = Relationship(back_populates="user") 
     posts: Mapped[List["Post"]] = Relationship(back_populates="user")
     
     # actions, this user performed
@@ -88,6 +97,226 @@ class User(SQLModel, table=True):
 
 
 
+
+# create tenant model
+class Tenant(SQLModel, table=True):
+    __tablename__ = "tenants"
+     
+    tenant_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
+    name: str = Field(max_length=255, index=True)
+    type: str = Field(default="personal", max_length=25)
+    api_call_limit: Optional[int] = Field(default=1000)
+    api_calls_used: Optional[int] = Field(default=0)
+    
+    # add foreign key
+    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
+    
+    slug: str = Field(max_length=100, unique=True, index=True)
+    is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
+    is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
+    deleted_at: Optional[datetime] = Field(default=None)
+    
+    # stripe
+    stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
+    
+    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
+    
+    # subscription
+    plan: str = Field(default="free", max_length=25)
+    max_members: int = Field(default=25)
+    
+    # branding
+    logo_url: Optional[str] = Field(default=None, max_length=255)
+    primary_colour: str = Field(default="#1877F2", max_length=25)
+
+    # create relationships
+    members: List["TenantMembership"] = Relationship(back_populates="tenant") 
+    tenant_invitations: List["TenantInvitation"] = Relationship(back_populates="tenant")
+    api_keys: List["APIKey"] = Relationship(back_populates="tenant")
+    subscriptions: List["Subscription"] = Relationship(back_populates="tenant")
+    
+    
+    
+    
+    
+# create tenant-membership model
+class TenantMembership(SQLModel, table=True):
+    __tablename__ = "tenant_memberships"
+
+    membership_id: Optional[int] = Field(default=None, primary_key=True)
+     
+    # add foreign keys
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    user_id: int = Field(foreign_key="users.user_id", nullable=False, index=True)
+
+    role: str = Field(default="member", max_length=50)
+    is_active: bool = Field(default=True)
+    is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
+    deleted_at: Optional[datetime] = Field(default=None)
+    joined_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
+    
+    # create relationships  
+    tenant: "Tenant" = Relationship(back_populates="members")
+    user: "User" = Relationship(back_populates="tenant_memberships")
+    
+    # add unique constraint(one user per tenant)
+    __table_args__ = (
+        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user"),
+    )
+
+
+
+
+
+# create invitation model
+class TenantInvitation(SQLModel, table=True):
+    __tablename__ = "tenant_invitations"
+
+    invite_id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    
+    email: str = Field(max_length=255, default=None, index=True)
+    role: str = Field(default="member", max_length=50)
+    token: str = Field(max_length=255, nullable=False, unique=True, index=True)
+    invited_by: int = Field(foreign_key="users.user_id")
+    is_accepted: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=48))
+
+    # create relationship
+    tenant: "Tenant" = Relationship(back_populates="tenant_invitations")
+    
+
+
+
+# create api-key model
+class APIKey(SQLModel, table=True):
+    __tablename__ = "api_keys"
+
+    api_key_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
+    
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    
+    key_hash: str = Field(max_length=255, nullable=False, unique=True, index=True)
+    key_prefix: str = Field(max_length=20, nullable=False)
+    name: str = Field(default="default", max_length=100)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
+
+    expires_at: Optional[datetime] = Field(default=None)
+    last_used_at: Optional[datetime] = Field(default=None)
+
+    # create Relationships
+    tenant: "Tenant" = Relationship(back_populates="api_keys") 
+
+
+
+
+
+# create api-usage-log model
+class APIUsageLog(SQLModel, table=True):
+    __tablename__ = "api_usage_logs"
+
+    log_id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # add foreign keys
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    api_key_id: Optional[UUID] = Field(default=None, foreign_key="api_keys.api_key_id", index=True)
+
+    endpoint: Optional[str] = Field(max_length=255)
+    method: str = Field(max_length=10)
+    status_code: Optional[int] 
+    response_time_ms: int = Field(default=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
+    
+    
+    
+    
+    
+#  create plan model
+class Plan(SQLModel, table=True):
+    __tablename__ = "plans"
+    
+    plan_id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=25, nullable=False)
+    type: str = Field(max_length=25)
+    price_monthly: float = Field(default=0.0)
+    price_yearly: float = Field(default=0.0)
+    currency: str = Field(max_length= 15, default="usd")
+    stripe_price_id: str = Field(max_length=255, nullable=False, unique=True)
+    is_active: bool = Field(default=True)
+    
+    # create relationships
+    subscriptions: list["Subscription"] = Relationship(back_populates="plan") 
+    
+    
+    
+    
+    
+# create subscription model 
+class Subscription(SQLModel, table=True):
+    __tablename__ = "subscriptions"
+
+    subscription_id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # add foreign keys
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    plan_id: int = Field(foreign_key="plans.plan_id", index=True)
+    
+    # stripe
+    stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
+    stripe_subscription_id: str = Field(max_length=255, unique=True, nullable=False, index=True)
+    
+    status: str = Field(default="active", max_length=20)
+    type: str = Field(max_length=25)
+    current_period_start: Optional[datetime] = Field(default=None)
+    current_period_end: Optional[datetime] = Field(default=None)
+    cancelled_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
+    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
+
+    # create relationships
+    plan: Optional[Plan] = Relationship(back_populates="subscriptions")   
+    tenant: Optional[Tenant] = Relationship(back_populates="subscriptions")   
+
+    
+    
+    
+
+# create idempotency model
+class WebhookEvent(SQLModel, table=True):
+    __tablename__ = "webhook_events"
+    
+    stripe_event_id: str = Field(max_length=255, primary_key=True, unique=True)
+    event_type: str = Field(max_length=100, nullable=False, index=True)
+    payload: str = Field(
+        sa_column=sa.Column(Text, nullable=False)
+    )
+    processed: bool = Field(default=False, nullable=False, index=True)
+    processed_at: Optional[datetime] = Field(default=None, nullable=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
+
+
+
+
+
 # create post model
 class Post(SQLModel, table=True):
     __tablename__ = "posts"
@@ -100,7 +329,8 @@ class Post(SQLModel, table=True):
         sa_column_kwargs={"server_default": func.now()},
         nullable=False
     )
-    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)    
+    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)  
+      
     # add foreign key with cascade and restrict 
     user_id: int = Field(
         sa_column=sa.Column(
@@ -109,7 +339,8 @@ class Post(SQLModel, table=True):
             index=True,
             nullable=False
         ),
-    )  
+    )
+    
     # create relationship
     user: Mapped["User"] = Relationship(back_populates = "posts")
     comments: Mapped[List["Comment"]] = Relationship(back_populates="post")
@@ -133,10 +364,13 @@ class Comment(SQLModel, table=True):
         sa_column_kwargs={"server_default": func.now()},
         nullable=False
     ) 
+    
     # add foreign key
     post_id: int = Field(foreign_key="posts.post_id", index=True)
+    
     # create relationship
     post: Mapped["Post"] = Relationship(back_populates="comments")
+    
     
     
     
@@ -180,11 +414,20 @@ class AuditLog(SQLModel, table=True):
 
 
 
+
 # fix forward reference
 RolePermission.model_rebuild()
 Role.model_rebuild()
 Permission.model_rebuild()
 User.model_rebuild()
+Tenant.model_rebuild()
+TenantMembership.model_rebuild()
+TenantInvitation.model_rebuild()
+APIKey.model_rebuild()
+APIUsageLog.model_rebuild()
+Plan.model_rebuild()
+Subscription.model_rebuild()
+WebhookEvent.model_rebuild()
 Post.model_rebuild()
 Comment.model_rebuild()
 AuditLog.model_rebuild()

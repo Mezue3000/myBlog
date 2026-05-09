@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 # role hierarchy (module level)
 ROLE_HIERARCHY = {
     "superadmin": 4,
-    "admin": 3,
+    "global_admin": 3,
     "moderator": 2,
     "user": 1,
 }
