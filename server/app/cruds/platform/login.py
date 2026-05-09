@@ -1,15 +1,15 @@
 # import necessary dependencies
 from fastapi import APIRouter, Depends, Request, Response, BackgroundTasks
 from fastapi_limiter.depends import RateLimiter
-from app.schemas.jwts import Token
+from server.app.schemas.platform.jwts import Token
 from typing import Union
-from app.schemas.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
+from server.app.schemas.platform.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
-from app.utility.database import get_db 
-from app.utility.security import get_identifier
-from app.services.auth import authenticate_users, confirm_2fa, refresh_session_token
-from app.schemas.users import TwoFAVerify 
+from server.app.utility.platform.database import get_db 
+from server.app.utility.platform.security import get_identifier
+from server.app.services.platform.auth import authenticate_users, confirm_2fa, refresh_session_token
+from server.app.schemas.platform.users import TwoFAVerify 
 
 
 

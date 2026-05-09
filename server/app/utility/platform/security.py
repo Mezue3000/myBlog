@@ -3,12 +3,12 @@
 from pwdlib import PasswordHash
 import asyncio
 from fastapi import Request, Depends, Response, HTTPException, status, BackgroundTasks
-from app.utility.user import get_current_active_user 
+from server.app.utility.platform.user import get_current_active_user 
 from app.models import User, AuditLog
 from typing import Optional
-from app.utility.database import async_engine
+from server.app.utility.platform.database import async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.email import create_email_otp, send_verification_otp_email, verify_email_otp
+from server.app.utility.platform.email import create_email_otp, send_verification_otp_email, verify_email_otp
 from app.cores.logging import get_logger
 
 

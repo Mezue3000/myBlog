@@ -9,7 +9,7 @@ from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks, Request, Response
 from app.cores.redis import redis_client
-from app.utility.email import create_email_otp, send_verification_otp_email
+from server.app.utility.platform.email import create_email_otp, send_verification_otp_email
 
 
 
@@ -251,11 +251,13 @@ def set_trusted_device_cookie(response: Response, device_id: str):
 
 # handle trusted device(for 2fa)
 async def handle_trusted_device_login(user: User, response: Response):
-
+    # log info
     logger.info("trusted_device_login", extra={"user_id": user.user_id})
-
+    
+    # generate access/refresh tokens
     access_token = create_access_token(user_id=user.user_id)
     refresh_token = await create_refresh_token(user.user_id)
+    
     # generate csrf token(double submit token)
     csrf_token = secrets.token_urlsafe(32)
 

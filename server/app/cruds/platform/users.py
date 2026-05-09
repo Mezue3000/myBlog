@@ -1,13 +1,13 @@
 # import dependencies
 from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
 from fastapi_limiter.depends import RateLimiter
-from app.schemas.users import EmailRequest, UserRead, UserCreate, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, PasswordResetConfirm
+from server.app.schemas.platform.users import EmailRequest, UserRead, UserCreate, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, PasswordResetConfirm
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.database import get_db
+from server.app.utility.platform.database import get_db
 from app.models import User
-from app.utility.security import get_identifier_factory, get_identifier
-from app.services.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices 
-from app.utility.user import get_current_user, get_current_active_user
+from server.app.utility.platform.security import get_identifier_factory, get_identifier
+from server.app.services.platform.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices 
+from server.app.utility.platform.user import get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
  
 

@@ -1,14 +1,14 @@
 # import dependencies
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks, Response, Request
 from app.cores.logging import get_logger
-from app.utility.admin import validate_admin_access, build_user_filters, fetch_users, count_users, get_user_by_id_with_role 
+from server.app.utility.platform.global_admin import validate_admin_access, build_user_filters, fetch_users, count_users, get_user_by_id_with_role 
 from math import ceil
 from typing import Annotated, Optional
-from app.schemas.admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
+from server.app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Role, AuditLog
-from app.utility.user import get_current_active_user, logout_all_devices_for_user, validate_unique_fields
-from app.utility.admin import resolve_new_role, apply_updates_and_track_changes, persist_with_audit, prevent_self_action, ensure_user_state, verify_admin_ownership, build_audit_context, create_auth_audit_log_bg
+from server.app.utility.platform.user import get_current_active_user, logout_all_devices_for_user, validate_unique_fields
+from server.app.utility.platform.global_admin import resolve_new_role, apply_updates_and_track_changes, persist_with_audit, prevent_self_action, ensure_user_state, verify_admin_ownership, build_audit_context, create_auth_audit_log_bg
 
 
 

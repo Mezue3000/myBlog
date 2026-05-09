@@ -1,6 +1,6 @@
 # import dependencies
 from fastapi import Request, HTTPException, status
-from app.utility.security import verify_origin
+from server.app.utility.platform.security import verify_origin
 
 
 

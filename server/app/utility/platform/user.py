@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.database import get_db
+from server.app.utility.platform.database import get_db
 from typing import Optional
 from sqlalchemy.orm import selectinload
 from jwt import PyJWKError, ExpiredSignatureError
@@ -63,7 +63,7 @@ def verify_users_ownership(resource_owner_id: int, current_user: User):
     Checks if the current user is the owner OR a superadmin group.
     """
     # superadmin/admin/moderator bypass
-    if current_user.role.name in ["superadmin", "admin", "moderator"]:
+    if current_user.role.name in ["superadmin", "global_admin", "moderator"]:
         return True
         
     # ownership check

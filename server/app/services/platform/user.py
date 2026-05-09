@@ -1,17 +1,17 @@
 # import dependencies
 from app.cores.logging import get_logger
 from dotenv import load_dotenv
-from app.schemas.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
-from app.utility.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user
+from server.app.schemas.platform.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
+from server.app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 import os
 from app.models import RolePermission, Role, Permission, User, AuditLog
-from app.utility.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
+from server.app.utility.platform.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from app.utility.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
-from app.utility.auth import extract_refresh_token, get_refresh_token_payload, clear_auth_cookies
+from server.app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
+from server.app.utility.platform.auth import extract_refresh_token, get_refresh_token_payload, clear_auth_cookies
 
 
  
