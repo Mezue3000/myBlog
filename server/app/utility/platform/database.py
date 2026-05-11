@@ -13,7 +13,7 @@ from app.models import User, Post, Comment
 
 
 # load environment variable
-load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
 
 
 

@@ -1,6 +1,6 @@
 # import dependencies
 from app.cores.logging import get_logger
-import jwt, uuid, os
+import jwt, uuid, os, re
 from app.cores.redis import redis_client
 from cryptography.hazmat.primitives import serialization
 from fastapi.security import OAuth2PasswordBearer
@@ -243,3 +243,10 @@ def validate_2fa_user(user: User):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
+        
+        
+        
+        
+# refactor username
+def slugify(text: str) -> str:
+    return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')

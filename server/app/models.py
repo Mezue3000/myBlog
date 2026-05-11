@@ -109,12 +109,12 @@ class Tenant(SQLModel, table=True):
     api_calls_used: Optional[int] = Field(default=0)
     
     # add foreign key
-    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
+    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False) 
     
     slug: str = Field(max_length=100, unique=True, index=True)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
-    deleted_at: Optional[datetime] = Field(default=None)
+    deleted_at: Optional[datetime] = Field(default=None) 
     
     # stripe
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True)
@@ -129,9 +129,9 @@ class Tenant(SQLModel, table=True):
     
     # subscription
     plan: str = Field(default="free", max_length=25)
-    max_members: int = Field(default=25)
+    max_members: int = Field(default=1)
     
-    # branding
+    # branding(tenant-dashboard)
     logo_url: Optional[str] = Field(default=None, max_length=255)
     primary_colour: str = Field(default="#1877F2", max_length=25)
 
@@ -156,6 +156,7 @@ class TenantMembership(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.user_id", nullable=False, index=True)
 
     role: str = Field(default="member", max_length=50)
+    max_members: int = Field(default=50)
     is_active: bool = Field(default=True)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)

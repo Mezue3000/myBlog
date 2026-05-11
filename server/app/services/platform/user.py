@@ -2,12 +2,12 @@
 from app.cores.logging import get_logger
 from dotenv import load_dotenv
 from server.app.schemas.platform.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
-from server.app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user
+from server.app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user, slugify
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 import os
-from app.models import RolePermission, Role, Permission, User, AuditLog
+from app.models import RolePermission, Role, Permission, User, Tenant, AuditLog
 from server.app.utility.platform.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from server.app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 # load environment variable
-load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env") 
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env") 
 
 
 
@@ -69,24 +69,38 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
     # hash password
     hashed_password = await hash_password(user.password)
     
-    # get users role id
+    # get users role-id
     role_id = os.getenv("USERS_ROLE_ID")
+    
+    # obtain slug from username
+    slugg = slugify(user.username) + "-workspace"
 
-    # create user
-    new_user = User(
-        email=email,
-        username=user.username.lower(),
-        password_hash=hashed_password,
-        biography=user.biography,
-        country=user.country.lower(),
-        city=user.city.lower(),
-        role_id=role_id
-    )
-
-    try: 
+    try:
+        # create user
+        new_user = User(
+            email=email,
+            username=user.username.lower(),
+            password_hash=hashed_password,
+            biography=user.biography,
+            country=user.country.lower(),
+            city=user.city.lower(),
+            role_id=role_id
+        )
+    
         db.add(new_user)
+        db.flush()
+        
+        # create personal workspace - no membership needed, owner_id is the proof
+        personal_tenant = Tenant(
+            name=f"{user.username}'s ws",
+            slug=slugg,
+            owner_id=new_user.user_id
+        )
+
+        db.add(personal_tenant)
         await db.commit()
         await db.refresh(new_user)
+        await db.refresh(personal_tenant)
         logger.info("User created successfully: %s", email) 
     except IntegrityError:
         await db.rollback()

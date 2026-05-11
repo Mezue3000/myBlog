@@ -70,7 +70,7 @@ async def confirm_2fa(
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
-    data: TwoFAVerify,
+    data: TwoFAVerify,    
     db: AsyncSession
 ):
     # verify OTP → returns email
@@ -132,4 +132,4 @@ async def refresh_session_token(request: Request, response: Response):
     # set cookies
     set_auth_cookies(response, access_token, new_refresh_token)
 
-    return {"detail": "Token refreshed"} 
+    return {"detail": "Token refreshed"}   
