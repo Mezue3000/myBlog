@@ -10,6 +10,8 @@ from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks, Request, Response
 from app.cores.redis import redis_client
 from server.app.utility.platform.email import create_email_otp, send_verification_otp_email
+from app.utility.tenant.tenant_router import get_personal_tenant
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 
@@ -250,20 +252,27 @@ def set_trusted_device_cookie(response: Response, device_id: str):
 
 
 # handle trusted device(for 2fa)
-async def handle_trusted_device_login(user: User, response: Response):
+async def handle_trusted_device_login(user: User, response: Response, db: AsyncSession):
     # log info
     logger.info("trusted_device_login", extra={"user_id": user.user_id})
     
-    # generate access/refresh tokens
-    access_token = create_access_token(user_id=user.user_id)
+    # generate tokens
+    access_token = create_access_token(user.user_id)
     refresh_token = await create_refresh_token(user.user_id)
     
     # generate csrf token(double submit token)
     csrf_token = secrets.token_urlsafe(32)
-
+    
+    # get user's personal tenant/workspace
+    tenant = await get_personal_tenant(user.user_id, db)
+    
     set_auth_cookies(response, access_token, refresh_token, csrf_token)
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "tenant_id": str(tenant.tenant_id), 
+        "token_type": "bearer"
+    }  
     
     
     

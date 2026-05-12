@@ -7,6 +7,7 @@ from server.app.utility.platform.user import get_user_by_identifier, validate_us
 from server.app.utility.platform.security import validate_password, build_audit_context, create_auth_audit_log_bg, verify_email_otp
 from server.app.utility.platform.auth import is_trusted_device, handle_trusted_device_login, handle_2fa_challenge, handle_remember_device, set_auth_cookies, generate_auth_tokens, extract_refresh_token, rotate_refresh_token, get_refresh_token_payload, create_access_token
 from server.app.schemas.platform.users import TwoFAVerify
+from app.utility.tenant.tenant_router import get_personal_tenant
 
 
 
@@ -35,7 +36,7 @@ async def authenticate_users(
 
     # validate user
     validate_user_credentials(user)
-
+    
     # validate password
     await validate_password(password, user.password_hash)
 
@@ -82,6 +83,9 @@ async def confirm_2fa(
     # validate user
     validate_2fa_user(user)
 
+    # get personal tenant/workspace
+    tenant = await get_personal_tenant(user.user_id, db)
+    
     # generate tokens
     tokens = await generate_auth_tokens(user)
 
@@ -109,6 +113,7 @@ async def confirm_2fa(
 
     return {
         "access_token": tokens["access_token"],
+        "tenant_id": str(tenant.tenant_id),
         "token_type": "bearer"
     }
     
@@ -116,7 +121,7 @@ async def confirm_2fa(
     
 
 # function to refresh token
-async def refresh_session_token(request: Request, response: Response):
+async def refresh_session_token(request: Request, response: Response): 
     # extract refresh token from cookies
     old_refresh_token = extract_refresh_token(request)
 
@@ -132,4 +137,4 @@ async def refresh_session_token(request: Request, response: Response):
     # set cookies
     set_auth_cookies(response, access_token, new_refresh_token)
 
-    return {"detail": "Token refreshed"}   
+    return {"detail": "Token refreshed"}    
