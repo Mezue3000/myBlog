@@ -2,7 +2,7 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Tenant
 from sqlmodel import select
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 
 
 
@@ -33,4 +33,11 @@ async def get_personal_tenant(user_id: int, db: AsyncSession) -> Tenant:
 
 
 
-# create organisation workspace
+# check tenant name uniqueness
+async def validate_tenant_uniqueness(name: str, db: AsyncSession):
+    statement = select(Tenant).where(Tenant.name == name)
+
+    existing_tenant = db.exec(statement).first()
+
+    if existing_tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant name already exists")

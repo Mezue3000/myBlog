@@ -73,7 +73,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
     role_id = os.getenv("USERS_ROLE_ID")
     
     # obtain slug from username
-    slugg = slugify(user.username) + "-workspace"
+    slug = slugify(user.username) + "-workspace"
 
     try:
         # create user
@@ -93,7 +93,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         # create personal workspace - no membership needed, owner_id is the proof
         personal_tenant = Tenant(
             name=f"{user.username}'s ws",
-            slug=slugg,
+            slug=slug,
             owner_id=new_user.user_id
         )
 

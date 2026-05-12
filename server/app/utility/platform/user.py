@@ -247,6 +247,6 @@ def validate_2fa_user(user: User):
         
         
         
-# refactor username
+# refactor name-fields
 def slugify(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')

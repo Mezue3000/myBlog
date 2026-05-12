@@ -103,7 +103,7 @@ class Tenant(SQLModel, table=True):
     __tablename__ = "tenants"
      
     tenant_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
-    name: str = Field(max_length=255, index=True)
+    name: str = Field(max_length=255, index=True, unique=True)
     type: str = Field(default="personal", max_length=25)
     api_call_limit: Optional[int] = Field(default=1000)
     api_calls_used: Optional[int] = Field(default=0)
@@ -301,7 +301,7 @@ class Subscription(SQLModel, table=True):
     
     
 
-# create idempotency model
+# create stripe idempotency model
 class WebhookEvent(SQLModel, table=True):
     __tablename__ = "webhook_events"
     

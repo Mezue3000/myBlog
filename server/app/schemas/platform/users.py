@@ -65,6 +65,8 @@ class UserUpdate(SQLModel):
     country: Optional[str] = None
     city: Optional[str] = None
      
+     
+     
 
 class UserUpdateRead(UserBase):
     updated_at: datetime
