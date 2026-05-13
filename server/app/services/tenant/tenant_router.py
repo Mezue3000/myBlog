@@ -1,11 +1,11 @@
 # import dependencies
 from app.cores.logging import get_logger
-from app.schemas.tenant.tenant_router import TenantCreate
+from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
 from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Tenant, TenantMembership
-from app.utility.tenant.tenant_router import validate_tenant_uniqueness
+from app.utility.tenant.tenant_router import validate_tenant_uniqueness, get_user_tenants_by_type
 from app.utility.platform.user import slugify
 
 
@@ -74,3 +74,31 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Something went wrong"
         )
+        
+        
+        
+        
+        
+# list all user team workspaces by type
+async def get_tenants_service( current_user: User, db: AsyncSession):
+    try:
+        results = await get_user_tenants_by_type(user_id=current_user.user_id, db=db, tenant_type="team")
+
+        tenants = [
+            TenantRead(
+                tenant_id=str(tenant.tenant_id),
+                name=tenant.name,
+                slug=tenant.slug,
+                role=role
+            )
+            for tenant, role in results
+        ]
+
+        return tenants
+
+    except Exception as e:
+        logger.error(f"Error fetching tenants: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="Failed to fetch tenants"
+        ) 

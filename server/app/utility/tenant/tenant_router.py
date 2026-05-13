@@ -1,6 +1,6 @@
 # import dependencies
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import Tenant
+from app.models import Tenant, TenantMembership
 from sqlmodel import select
 from fastapi import HTTPException, status
 
@@ -41,3 +41,33 @@ async def validate_tenant_uniqueness(name: str, db: AsyncSession):
 
     if existing_tenant:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant name already exists")
+    
+    
+    
+    
+    
+# function to list all user team-space by type
+async def get_user_tenants_by_type(
+    user_id: int, 
+    db: AsyncSession, 
+    tenant_type: str = "team"
+) -> list[tuple[Tenant, str]]:
+    
+    statement = (
+        select(Tenant, TenantMembership.role)
+        .join(TenantMembership)
+        .where(
+            TenantMembership.user_id == user_id,
+            TenantMembership.is_active == True,
+            TenantMembership.is_deleted == False,
+            
+            Tenant.type == "team",
+            Tenant.is_active == True,
+            Tenant.is_deleted  == False
+        )
+        .order_by(Tenant.name.asc())
+    )
+
+    result = await db.exec(statement)
+
+    return result.all()

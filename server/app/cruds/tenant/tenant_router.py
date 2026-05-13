@@ -2,12 +2,12 @@
 from fastapi import APIRouter, Depends
 from fastapi_limiter.depends import RateLimiter
 from server.app.utility.platform.security import get_identifier
-from app.schemas.tenant.tenant_router import TenantCreate
+from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
 from app.models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from server.app.utility.platform.database import get_db
 from app.utility.platform.user import get_current_active_user
-from app.services.tenant.tenant_router import create_team_service
+from app.services.tenant.tenant_router import create_team_service, get_user_tenants_by_type
 
 
 
@@ -37,5 +37,23 @@ async def create_team_workspace(
 
     return {
         "message": "Tenant created successfully",
-        "tenant_id": tenant.tenant_id
+        "tenant_id": str(tenant.tenant_id)
     }
+    
+    
+    
+    
+    
+# endpoint to list all user team space
+@router.get(
+    "/tenants",
+    response_model=list[TenantRead],
+)
+async def list_all_user_tenants(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_user_tenants_by_type(
+        current_user=current_user,
+        db=db,
+    )
