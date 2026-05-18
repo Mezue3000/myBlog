@@ -1,8 +1,15 @@
 # import dependencies
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import Tenant, TenantMembership
+from app.models import Tenant, TenantMembership, User, TenantInvitation
 from sqlmodel import select
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends, Header
+from app.utility.platform.user import get_current_active_user
+from app.utility.platform.database import get_db
+from typing import Optional
+from uuid import UUID
+import secrets
+from pydantic import EmailStr
+from datetime import datetime, timezone
 
 
 
@@ -46,7 +53,7 @@ async def validate_tenant_uniqueness(name: str, db: AsyncSession):
     
     
     
-# function to list all user team-space by type
+# function to list all user team-space by type 
 async def get_user_tenants_by_type(
     user_id: int, 
     db: AsyncSession, 
@@ -71,3 +78,144 @@ async def get_user_tenants_by_type(
     result = await db.exec(statement)
 
     return result.all()
+
+
+
+
+
+# function to get tenant-membership
+async def get_tenant_membership(
+    user_id: int,
+    tenant_id: UUID,
+    db: AsyncSession,
+):
+    statement = select(TenantMembership).where(
+        TenantMembership.user_id == user_id,
+        TenantMembership.tenant_id == tenant_id,
+        TenantMembership.is_active == True,
+        TenantMembership.is_deleted == False
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
+
+
+
+
+
+async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSession):
+    # personal tenant
+    if tenant.type == "personal":
+        if tenant.owner_id != current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to personal tenant"
+            )
+
+        return True
+
+    # team/api tenants
+    membership = await get_tenant_membership(
+        user_id=current_user.user_id,
+        tenant_id=tenant.tenant_id,
+        db=db
+    )
+
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to tenant"
+        )
+
+    return True
+
+
+
+
+
+# fuction to get current tenant
+async def get_current_tenant(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+    x_tenant_id: Optional[UUID] = Header(default=None, alias="X-Tenant-ID",)
+):
+    tenant_id = (x_tenant_id or current_user.active_tenant_id)
+
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active tenant selected"
+        )
+
+    tenant = await db.get(Tenant, tenant_id)
+
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
+    
+    # centralized access validation
+    await validate_tenant_access(
+        tenant=tenant,
+        current_user=current_user,
+        db=db,
+    )
+
+    return tenant
+
+
+
+
+
+# function to generate token 
+def generate_invite_token():
+    return secrets.token_urlsafe(32)
+
+
+
+
+
+# function to check tenant active members by email
+async def get_tenant_membership_by_email(
+    tenant_id: UUID,
+    email: EmailStr,
+    db: AsyncSession,
+):
+    statement = (
+        select(TenantMembership)
+        .join(
+            User,
+            User.user_id == TenantMembership.user_id,
+        )
+        .where(
+            TenantMembership.tenant_id == tenant_id,
+            User.email == email,
+        )
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
+
+
+
+
+
+# function to prevent duplicate active invitations
+async def has_active_invitation(
+    tenant_id: UUID,
+    email: EmailStr,
+    db: AsyncSession,
+):
+    statement = select(TenantInvitation).where(
+        TenantInvitation.tenant_id == tenant_id,
+        TenantInvitation.email == email,
+        TenantInvitation.is_accepted == False,
+        TenantInvitation.expires_at > datetime.now(timezone.utc)
+    )
+
+    result = await db.exec(statement)
+
+    return result.first() is not None

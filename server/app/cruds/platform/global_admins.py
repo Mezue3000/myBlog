@@ -20,7 +20,11 @@ logger = get_logger(__name__)
 
 
 # initialize router
-router = APIRouter(prefix="/admin", tags=["admins"], dependencies=[Depends(get_current_active_user)])
+router = APIRouter(
+    prefix="/global_admin", 
+    tags=["global_admins"], 
+    dependencies=[Depends(get_current_active_user)]
+)
 
 # admin endpoint to retrieve users
 @router.get("/users", response_model=PaginatedUsers)

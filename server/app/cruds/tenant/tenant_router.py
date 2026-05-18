@@ -7,7 +7,8 @@ from app.models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from server.app.utility.platform.database import get_db
 from app.utility.platform.user import get_current_active_user
-from app.services.tenant.tenant_router import create_team_service, get_user_tenants_by_type
+from app.services.tenant.tenant_router import create_team_service, get_tenants_service, switch_tenant_service
+from uuid import UUID
 
 
 
@@ -53,7 +54,24 @@ async def list_all_user_tenants(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_user_tenants_by_type(
+    return await get_tenants_service(
+        current_user=current_user,
+        db=db,
+    )
+    
+    
+    
+    
+    
+# create switch-tenant endpoint
+@router.post("/tenants/{tenant_id}/switch")
+async def switch_tenant(
+    tenant_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await switch_tenant_service(
+        tenant_id=tenant_id,
         current_user=current_user,
         db=db,
     )

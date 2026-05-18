@@ -114,6 +114,8 @@ async def confirm_2fa(
     return {
         "access_token": tokens["access_token"],
         "tenant_id": str(tenant.tenant_id),
+        "name": tenant.name,
+        "type": tenant.type, 
         "token_type": "bearer"
     }
     

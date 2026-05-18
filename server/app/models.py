@@ -74,8 +74,13 @@ class User(SQLModel, table=True):
     )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     
-    # add foreign key
+    # add foreign keys
     role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
+    active_tenant_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="tenants.tenant_id",
+        index=True
+    )
     
     # create relationship
     role: Optional[Role] = Relationship(back_populates="users")
@@ -139,6 +144,7 @@ class Tenant(SQLModel, table=True):
     members: List["TenantMembership"] = Relationship(back_populates="tenant") 
     tenant_invitations: List["TenantInvitation"] = Relationship(back_populates="tenant")
     api_keys: List["APIKey"] = Relationship(back_populates="tenant")
+    usage_logs: List["APIUsageLog"] = Relationship(back_populates="tenant")
     subscriptions: List["Subscription"] = Relationship(back_populates="tenant")
     
     
@@ -146,7 +152,7 @@ class Tenant(SQLModel, table=True):
     
     
 # create tenant-membership model
-class TenantMembership(SQLModel, table=True):
+class TenantMembership(SQLModel, table=True): 
     __tablename__ = "tenant_memberships"
 
     membership_id: Optional[int] = Field(default=None, primary_key=True)
@@ -189,7 +195,7 @@ class TenantInvitation(SQLModel, table=True):
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
     
     email: str = Field(max_length=255, default=None, index=True)
-    role: str = Field(default="member", max_length=50)
+    role: str = Field(default="member", max_length=10)
     token: str = Field(max_length=255, nullable=False, unique=True, index=True)
     invited_by: int = Field(foreign_key="users.user_id")
     is_accepted: bool = Field(default=False)
@@ -247,6 +253,8 @@ class APIUsageLog(SQLModel, table=True):
     response_time_ms: int = Field(default=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
     
+    # create relationship
+    tenant: Optional[Tenant] = Relationship(back_populates="usage_logs")
     
     
     

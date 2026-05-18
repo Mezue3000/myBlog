@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 # function for all-device logout
 async def logout_all_devices_for_user(user_id: str) -> int:
+    
     # call with an id
     if not user_id:
         raise ValueError("logout_all_devices_for_user called with empty user_id")
@@ -59,9 +60,7 @@ async def logout_all_devices_for_user(user_id: str) -> int:
 
 # users ownership verification
 def verify_users_ownership(resource_owner_id: int, current_user: User):
-    """
-    Checks if the current user is the owner OR a superadmin group.
-    """
+
     # superadmin/admin/moderator bypass
     if current_user.role.name in ["superadmin", "global_admin", "moderator"]:
         return True

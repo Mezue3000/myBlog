@@ -92,7 +92,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         
         # create personal workspace - no membership needed, owner_id is the proof
         personal_tenant = Tenant(
-            name=f"{user.username}'s ws",
+            name="private",
             slug=slug,
             owner_id=new_user.user_id
         )
@@ -428,7 +428,6 @@ async def signout_all_devices(
     
     # log success
     logger.info("Logout_success", extra={"user_id": user_id})
-
 
     return {"detail": "Logged out successfully from all devices"} 
 
