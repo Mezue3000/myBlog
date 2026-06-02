@@ -1,7 +1,5 @@
 # import dependencies
-import sys
-import os
-import asyncio
+import sys, os, asyncio
 from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import async_engine_from_config, AsyncSession
 from alembic import context
@@ -16,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 
 # load environmental variable
-load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
 
 
 
@@ -27,8 +25,6 @@ config = context.config
 
 # get environmental variable
 DATABASE_URL = os.getenv("DATABASE_URL") 
-
-
 
 
 
@@ -44,7 +40,10 @@ if config.config_file_name is not None:
 
 
 # import your models
-from app.models import RolePermission, Role, Permission, User, Post, Comment, AuditLog
+from app.models import RolePermission, Role, Permission, User, Tenant, TenantMembership, TenantInvitation, APIKey, APIUsageLog, Plan, Subscription, WebhookEvent, Post, Comment, AuditLog
+
+
+
 target_metadata = SQLModel.metadata
 
 
@@ -63,11 +62,14 @@ async def run_migrations_online():
     await connectable.dispose()
 
 
+
 def do_run_migrations(connection):
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
         context.run_migrations()
+
+
 
 
 if context.is_offline_mode():
@@ -79,4 +81,3 @@ else:
     if sys.platform.startswith("win"):   # for window users
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(run_migrations_online())
-

@@ -219,3 +219,22 @@ async def has_active_invitation(
     result = await db.exec(statement)
 
     return result.first() is not None
+
+
+
+
+
+# function to get iv by token
+async def get_invitation_by_token(
+    token: str,
+    db: AsyncSession,
+):
+    statement = select(
+        TenantInvitation
+    ).where(
+        TenantInvitation.token == token
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()

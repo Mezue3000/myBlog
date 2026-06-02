@@ -60,6 +60,10 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
 
         return tenant
     
+    
+    except HTTPException:
+        raise
+    
     except SQLAlchemyError as e:
         await db.rollback()
         logger.error(f"Database error creating tenant: {str(e)}")

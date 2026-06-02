@@ -1,7 +1,7 @@
 # import dependencies
 # from __future__ import annotations
 from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON, Text
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy.orm import Mapped
@@ -31,8 +31,8 @@ class Role(SQLModel, table=True):
     name: str = Field(index=True, unique=True, max_length=50)
 
     # relationships
-    users: List["User"] = Relationship(back_populates="role")
-    permissions: List["Permission"] = Relationship(back_populates="roles", link_model=RolePermission)
+    users: list["User"] = Relationship(back_populates="role")
+    permissions: list["Permission"] = Relationship(back_populates="roles", link_model=RolePermission)
 
 
 
@@ -47,7 +47,7 @@ class Permission(SQLModel, table=True):
     description: Optional[str] = Field(default=None, max_length=255)
     
     # create relationships
-    roles: List[Role] = Relationship(back_populates="permissions", link_model=RolePermission)
+    roles: list[Role] = Relationship(back_populates="permissions", link_model=RolePermission)
 
 
 
@@ -84,17 +84,17 @@ class User(SQLModel, table=True):
     
     # create relationship
     role: Optional[Role] = Relationship(back_populates="users")
-    tenant_memberships: List["TenantMembership"] = Relationship(back_populates="user") 
-    posts: Mapped[List["Post"]] = Relationship(back_populates="user")
+    tenant_memberships: list["TenantMembership"] = Relationship(back_populates="user") 
+    posts: Mapped[list["Post"]] = Relationship(back_populates="user")
     
     # actions, this user performed
-    performed_actions: List["AuditLog"] = Relationship(
+    performed_actions: list["AuditLog"] = Relationship(
         back_populates="actor",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}
     )
 
     # actions, where this user was the target
-    targeted_actions: List["AuditLog"] = Relationship(
+    targeted_actions: list["AuditLog"] = Relationship(
         back_populates="target_user",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.target_user_id]"}
     )
@@ -141,11 +141,11 @@ class Tenant(SQLModel, table=True):
     primary_colour: str = Field(default="#1877F2", max_length=25)
 
     # create relationships
-    members: List["TenantMembership"] = Relationship(back_populates="tenant") 
-    tenant_invitations: List["TenantInvitation"] = Relationship(back_populates="tenant")
-    api_keys: List["APIKey"] = Relationship(back_populates="tenant")
-    usage_logs: List["APIUsageLog"] = Relationship(back_populates="tenant")
-    subscriptions: List["Subscription"] = Relationship(back_populates="tenant")
+    members: list["TenantMembership"] = Relationship(back_populates="tenant") 
+    tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
+    api_keys: list["APIKey"] = Relationship(back_populates="tenant")
+    usage_logs: list["APIUsageLog"] = Relationship(back_populates="tenant")
+    subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
     
     
     
@@ -352,7 +352,7 @@ class Post(SQLModel, table=True):
     
     # create relationship
     user: Mapped["User"] = Relationship(back_populates = "posts")
-    comments: Mapped[List["Comment"]] = Relationship(back_populates="post")
+    comments: Mapped[list["Comment"]] = Relationship(back_populates="post")
     
     # add fulltext index on title and comment columns 
     __table_args__ = (
@@ -389,7 +389,9 @@ class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
-
+    
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
 
