@@ -7,8 +7,9 @@ from app.utility.platform.user import get_current_active_user
 from app.utility.tenant.tenant_router import get_current_tenant
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.models import Tenant, User, TenantInvitation, TenantMembership
-from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token
+from app.models import Tenant, User, TenantInvitation, TenantMembership, AuditLog
+from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members
+from app.utility.tenant.admin_router import validate_tenant_role_hierarchy
 from app.utility.tenant.invite import send_tenant_invitation_email, send_bulk_invitation_emails
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from datetime import datetime, timezone
@@ -180,6 +181,7 @@ async def invite_members_service(
 
     except HTTPException:
         raise
+    
     except SQLAlchemyError as e:
         await db.rollback()
         logger.error(f"Database error inviting members: {str(e)}")
@@ -428,29 +430,426 @@ async def register_invited_member(
         raise
 
     except IntegrityError:
-
         await db.rollback()
-
         logger.error(
             f"Integrity error during invited "
             f"registration: {user.username}"
         )
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already exists",
         )
 
     except Exception as e:
-
         await db.rollback()
-
         logger.error(
             f"Failed invited registration: "
             f"{str(e)}"
         )
-
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Registration failed",
+        )
+        
+        
+        
+        
+        
+# function to soft-delete member
+async def delete_member_service(
+    tenant: Tenant,
+    member_id: int,
+    current_user: User,
+    db: AsyncSession,
+):
+    try:
+        logger.info(
+            f"User {current_user.user_id} "
+            f"attempting to remove member "
+            f"{member_id} from tenant "
+            f"{tenant.tenant_id}"
+        )
+
+        # prevent admin from removing themselves
+        if member_id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Use leave workspace endpoint instead"
+            )
+        
+        # validate role hierarchy
+        target_membership = await validate_tenant_role_hierarchy(
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            tenant_id=tenant.tenant_id,
+            db=db
+        )
+        
+        if target_membership.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Member is already deleted"
+            )
+
+        # soft delete membership
+        target_membership.is_deleted = True
+        target_membership.is_active = False
+        target_membership.removed_at = datetime.now(timezone.utc)
+        target_membership.removed_by = (current_user.user_id)
+
+        # create audit log
+        audit_log = AuditLog(
+            tenant_id=tenant.tenant_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            action="member.removed",
+            resource_type="tenant_membership",
+            resource_id=str(target_membership.membership_id),
+            metadata={"role": target_membership.role}
+        )
+
+        db.add(audit_log)
+        await db.commit()
+
+        logger.info(
+            f"Member {member_id} removed "
+            f"from tenant "
+            f"{tenant.tenant_id} by "
+            f"{current_user.user_id}"
+        )
+
+        return {"message": ("Member removed successfully")}
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(
+            f"Database error removing member "
+            f"{member_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error"
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.exception(
+            f"Unexpected error removing "
+            f"member {member_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remove member"
+        )
+        
+        
+        
+        
+      
+GLOBAL_ADMIN_ROLE_ID = 14
+  
+# function to delete team space
+async def delete_tenant_service(
+    tenant: Tenant,
+    current_user: User,
+    db: AsyncSession
+):
+    try:
+
+        logger.info(
+            f"User {current_user.user_id} "
+            f"attempting to delete tenant "
+            f"{tenant.tenant_id}"
+        )
+
+        # owner or global admin only
+        is_owner = (tenant.owner_id == current_user.user_id)
+        is_global_admin = (current_user.role_id == GLOBAL_ADMIN_ROLE_ID)
+
+        if not (is_owner or is_global_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only workspace owner or global admin can delete workspace"
+            )
+
+        # personal tenant protection
+        if tenant.type == "personal":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Personal workspace cannot be deleted"
+            )
+
+        # ensure all members are removed
+        remaining_members = (
+            await count_active_non_owner_members(
+                tenant_id=tenant.tenant_id,
+                owner_id=tenant.owner_id,
+                db=db,
+            )
+        )
+
+        if remaining_members > 0:
+
+            logger.warning(
+                f"Tenant {tenant.tenant_id} "
+                f"still has "
+                f"{remaining_members} active members"
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Remove all members before "
+                    "deleting the workspace"
+                ),
+            )
+
+        # soft delete tenant
+        tenant.is_active = False
+        tenant.is_deleted = True
+        tenant.deleted_at = datetime.now(timezone.utc)
+        tenant.deleted_by = (current_user.user_id)
+
+        # audit log
+        audit_log = AuditLog(
+            tenant_id=tenant.tenant_id,
+            actor_user_id=current_user.user_id,
+            action="tenant.deleted",
+            resource_type="tenant",
+            resource_id=str(
+                tenant.tenant_id
+            ),
+            metadata={
+                "tenant_name": tenant.name,
+                "deleted_by": str(
+                    current_user.user_id
+                ),
+            },
+        )
+
+        db.add(audit_log)
+        await db.commit()
+
+        logger.info(
+            f"Tenant {tenant.tenant_id} "
+            f"deleted successfully"
+        )
+
+        return {"message": ("Workspace deleted successfully")}
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(
+            f"Database error deleting tenant "
+            f"{tenant.tenant_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error",
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.exception(
+            f"Failed to delete tenant "
+            f"{tenant.tenant_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete tenant",
+        )
+        
+        
+        
+        
+        
+
+# function to softly-deactivate user
+async def deactivate_member_service(
+    tenant: Tenant,
+    member_id: int,
+    current_user: User,
+    db: AsyncSession,
+):
+    try:
+        logger.info(
+            f"User {current_user.user_id} "
+            f"attempting to deactivate "
+            f"member {member_id}"
+        )
+        
+        if member_id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot deactivate yourself",
+            )
+        
+        target_membership = await validate_tenant_role_hierarchy(
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            tenant_id=tenant.tenant_id,
+            db=db
+        )
+        
+        if not target_membership.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Member is already inactive"
+            )
+
+        target_membership.is_active = False
+        
+        db.add(target_membership)
+        await db.flush()
+
+        audit_log = AuditLog(
+            tenant_id=tenant.tenant_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            action="member.deactivated",
+            resource_type="tenant_membership",
+            resource_id=str(target_membership.membership_id),
+            changes={
+                "is_active": {
+                    "old": True,
+                    "new": False
+                }
+            }
+        )
+
+        db.add(audit_log)
+        await db.commit()
+
+        logger.info(
+            f"Member {member_id} "
+            f"deactivated successfully"
+        )
+
+        return {"message": ("Member deactivated successfully")}
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(
+            "tenant_member_deactivate_failed",
+            extra={
+                "tenant_id": tenant.tenant_id,
+                "actor_id": current_user.user_id,
+                "target_user_id": member_id,
+            },
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error",
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.exception(f"Failed to deactivate member: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to deactivate member",
+        )
+        
+        
+        
+        
+
+# function to softly-activate member
+async def activate_member_service(
+    tenant: Tenant,
+    member_id: int,
+    current_user: User,
+    db: AsyncSession,
+):
+    try:
+        logger.info(
+            f"User {current_user.user_id} "
+            f"attempting to activate "
+            f"member {member_id}"
+        )
+
+        if member_id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot activate yourself",
+            )
+        
+        target_membership = await validate_tenant_role_hierarchy(
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            tenant_id=tenant.tenant_id,
+            db=db
+        )
+            
+        if target_membership.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Member is already active"
+            )
+
+        target_membership.is_active = True
+        
+        db.add(target_membership)
+        await db.flush()
+        
+        audit_log = AuditLog(
+            tenant_id=tenant.tenant_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=member_id,
+            action="member.activated",
+            resource_type="tenant_membership",
+            resource_id=str(target_membership.membership_id),
+            changes={
+                "is_active": {
+                    "old": False,
+                    "new": True
+                }
+            }
+        )
+
+        db.add(audit_log)
+        await db.commit()
+
+        logger.info(
+            f"Member {member_id} "
+            f"activated successfully"
+        )
+
+        return {"message": ("Member activated successfully")}
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(
+            "tenant_member_activate_failed",
+            extra={
+                "tenant_id": tenant.tenant_id,
+                "actor_id": current_user.user_id,
+                "target_user_id": member_id
+            },
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error",
+        )
+
+    except Exception as e:
+        await db.rollback()
+        logger.exception(f"Failed to activate member: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to activate member",
         )

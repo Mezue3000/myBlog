@@ -92,6 +92,26 @@ async def get_tenant_membership(
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
         TenantMembership.tenant_id == tenant_id,
+        TenantMembership.is_deleted == False
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
+
+
+
+
+
+# function to get active members
+async def get_active_tenant_membership(
+    user_id: int,
+    tenant_id: UUID,
+    db: AsyncSession,
+):
+    statement = select(TenantMembership).where(
+        TenantMembership.user_id == user_id,
+        TenantMembership.tenant_id == tenant_id,
         TenantMembership.is_active == True,
         TenantMembership.is_deleted == False
     )
@@ -104,6 +124,7 @@ async def get_tenant_membership(
 
 
 
+# function to validate tenant access
 async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSession):
     # personal tenant
     if tenant.type == "personal":
@@ -156,11 +177,23 @@ async def get_current_tenant(
             detail="Tenant not found"
         )
     
+    if tenant.is_deleted:
+        raise HTTPException(
+           status_code=status.HTTP_410_GONE,
+           detail="Workspace has been deleted"
+        )
+
+    if not tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace is suspended"
+        )
+        
     # centralized access validation
     await validate_tenant_access(
         tenant=tenant,
         current_user=current_user,
-        db=db,
+        db=db
     )
 
     return tenant
@@ -229,12 +262,34 @@ async def get_invitation_by_token(
     token: str,
     db: AsyncSession,
 ):
-    statement = select(
-        TenantInvitation
-    ).where(
-        TenantInvitation.token == token
-    )
+    statement = select(TenantInvitation).where(TenantInvitation.token == token)
 
     result = await db.exec(statement)
 
     return result.first()
+
+
+
+
+
+# function to count tenant members
+async def count_active_non_owner_members(
+    tenant_id: UUID,
+    owner_id: int,
+    db: AsyncSession,
+) -> int:
+
+    statement = (
+        select(TenantMembership)
+        .where(
+            TenantMembership.tenant_id == tenant_id, 
+            TenantMembership.is_deleted == False,
+            TenantMembership.user_id != owner_id,
+        )
+    )
+
+    result = await db.exec(statement)
+
+    memberships = result.all()
+
+    return len(memberships)

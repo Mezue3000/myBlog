@@ -8,7 +8,7 @@ from app.utility.platform.user import get_current_active_user
 from pydantic import EmailStr
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.services.tenant.admin_router import invite_members_service, accept_invitation_service, register_invited_member
+from app.services.tenant.admin_router import invite_members_service, accept_invitation_service, register_invited_member, delete_member_service, delete_tenant_service, deactivate_member_service, activate_member_service
 from server.app.schemas.platform.users import UserCreate
 
 
@@ -76,4 +76,78 @@ async def register_invited_user(
         user=user,
         token=token,
         db=db
+    )
+    
+    
+    
+    
+    
+# soft-delete member endpoint
+@router.delete("/members/{member_id}")
+async def remove_member(
+    member_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await delete_member_service(
+        tenant=tenant,
+        member_id=member_id,
+        current_user=current_user,
+        db=db,
+    )
+    
+    
+    
+    
+    
+# endpoint to soft-delete tenant
+@router.delete("/tenants")
+async def delete_tenant(
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await delete_tenant_service(
+        tenant=tenant,
+        current_user=current_user,
+        db=db,
+    )
+    
+    
+    
+    
+    
+# endpoint to deactivate member
+@router.patch("/{member_id}/deactivate", status_code=status.HTTP_200_OK)
+async def deactivate_member(
+    member_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await deactivate_member_service(
+        tenant=tenant,
+        member_id=member_id,
+        current_user=current_user,
+        db=db,
+    )
+    
+    
+    
+    
+    
+# endpoint to activate member
+@router.patch("/{member_id}/activate", status_code=status.HTTP_200_OK)
+async def activate_member(
+    member_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await activate_member_service(
+        tenant=tenant,
+        member_id=member_id,
+        current_user=current_user,
+        db=db,
     )

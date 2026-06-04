@@ -120,6 +120,7 @@ class Tenant(SQLModel, table=True):
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None) 
+    deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     # stripe
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True)
@@ -146,6 +147,7 @@ class Tenant(SQLModel, table=True):
     api_keys: list["APIKey"] = Relationship(back_populates="tenant")
     usage_logs: list["APIUsageLog"] = Relationship(back_populates="tenant")
     subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
+    audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
     
     
     
@@ -166,6 +168,7 @@ class TenantMembership(SQLModel, table=True):
     is_active: bool = Field(default=True)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
+    deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     joined_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
@@ -390,7 +393,7 @@ class AuditLog(SQLModel, table=True):
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
     
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=True)
     
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
@@ -412,6 +415,8 @@ class AuditLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
 
     # relationships
+    tenant: "Tenant" = Relationship(back_populates="audit_logs")
+     
     actor: Optional["User"] = Relationship(
         back_populates="performed_actions",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}

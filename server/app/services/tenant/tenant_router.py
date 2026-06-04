@@ -4,10 +4,12 @@ from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
 from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import User, Tenant, TenantMembership
+from app.models import User, Tenant, TenantMembership, AuditLog
 from app.utility.tenant.tenant_router import validate_tenant_uniqueness, get_user_tenants_by_type, validate_tenant_access
 from app.utility.platform.user import slugify
 from uuid import UUID
+from typing import Optional
+from app.utility.platform.database import async_engine
 
 
 
@@ -170,3 +172,55 @@ async def switch_tenant_service(
         logger.error(f"Unexpected error switching tenant: {str(e)}")
 
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Something went wrong")
+    
+    
+    
+    
+    
+# function to create background audit-log
+async def create_audit_log_bg(
+    *,
+    action: str,
+    tenant_id: Optional[UUID] = None,
+    actor_user_id: Optional[UUID] = None,
+    target_user_id: Optional[UUID] = None,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    metadata: Optional[dict] = None,
+):
+    async with AsyncSession(async_engine) as db:
+
+        try:
+            audit_log = AuditLog(
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                target_user_id=target_user_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                metadata=metadata or {},
+            )
+
+            db.add(audit_log)
+
+            await db.commit()
+
+            logger.info(
+                f"Audit log created: {action}"
+            )
+
+        except SQLAlchemyError as e:
+
+            await db.rollback()
+
+            logger.error(
+                f"Failed to create audit log: {str(e)}"
+            )
+
+        except Exception as e:
+
+            await db.rollback()
+
+            logger.exception(
+                f"Unexpected audit log error: {str(e)}"
+            )

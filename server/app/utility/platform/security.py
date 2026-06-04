@@ -192,6 +192,7 @@ async def update_user_password_with_audit(
         context = build_audit_context(request)
 
         audit_entry = AuditLog(
+            tenant_id=user.active_tenant_id,
             actor_id=user.user_id,
             target_user_id=user.user_id,
             action="PASSWORD_RESET_CONFIRM",
@@ -208,7 +209,7 @@ async def update_user_password_with_audit(
 
         logger.error(
             "password_reset_db_failure",
-            extra={"user_id": user.user_id},
+            extra={"user_id": user.user_id, "tenant_id": user.active_tenant_id},
             exc_info=True
         )
 
