@@ -10,6 +10,8 @@ from uuid import UUID
 import secrets
 from pydantic import EmailStr
 from datetime import datetime, timezone
+from contextvars import ContextVar
+
 
 
 
@@ -293,3 +295,13 @@ async def count_active_non_owner_members(
     memberships = result.all()
 
     return len(memberships)
+
+
+
+
+
+# store tenant context
+current_tenant_id = ContextVar("current_tenant_id", default=None)
+
+
+bypass_rls = ContextVar("bypass_rls", default=False)

@@ -15,7 +15,7 @@ from server.app.schemas.platform.users import UserCreate
 
 
 # initialize router
-router = APIRouter(prefix="/admin",  tags=["admins"])
+router = APIRouter(prefix="/tenant-admin",  tags=["tenant-admins"])
 
     
  

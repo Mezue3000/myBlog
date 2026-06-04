@@ -152,9 +152,14 @@ class Tenant(SQLModel, table=True):
     
     
     
+# tenant-scoped marker mixin
+class TenantScopedMixin:
+    pass
+    
+    
     
 # create tenant-membership model
-class TenantMembership(SQLModel, table=True): 
+class TenantMembership(TenantScopedMixin, SQLModel, table=True): 
     __tablename__ = "tenant_memberships"
 
     membership_id: Optional[int] = Field(default=None, primary_key=True)
@@ -189,13 +194,13 @@ class TenantMembership(SQLModel, table=True):
 
 
 # create invitation model
-class TenantInvitation(SQLModel, table=True):
+class TenantInvitation(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "tenant_invitations"
 
     invite_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
     email: str = Field(max_length=255, default=None, index=True)
     role: str = Field(default="member", max_length=10)
@@ -212,7 +217,7 @@ class TenantInvitation(SQLModel, table=True):
 
 
 # create api-key model
-class APIKey(SQLModel, table=True):
+class APIKey(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "api_keys"
 
     api_key_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
@@ -241,13 +246,13 @@ class APIKey(SQLModel, table=True):
 
 
 # create api-usage-log model
-class APIUsageLog(SQLModel, table=True):
+class APIUsageLog(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "api_usage_logs"
 
     log_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     api_key_id: Optional[UUID] = Field(default=None, foreign_key="api_keys.api_key_id", index=True)
 
     endpoint: Optional[str] = Field(max_length=255)
@@ -283,13 +288,13 @@ class Plan(SQLModel, table=True):
     
     
 # create subscription model 
-class Subscription(SQLModel, table=True):
+class Subscription(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "subscriptions"
 
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
@@ -388,12 +393,12 @@ class Comment(SQLModel, table=True):
     
 
 # create audit-log model
-class AuditLog(SQLModel, table=True):
+class AuditLog(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
     
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
