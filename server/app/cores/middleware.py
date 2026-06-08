@@ -4,8 +4,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import json, uuid
 from fastapi.middleware.cors import CORSMiddleware
 from app.utility.tenant.tenant_router import current_tenant_id
-from app.cores.engine import SecurityEngine
-from app.cores.store import SecurityStore
 
 
 
@@ -135,34 +133,6 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             current_tenant_id.reset(token)
 
 
-
-
-
-# initialize engine/store
-engine = SecurityEngine()
-store = SecurityStore()
-
-
-# security middleware class
-class SecurityMiddleware(BaseHTTPMiddleware):
-
-    async def dispatch(self, request: Request, call_next):
-
-        ip = request.client.host
-
-        # check ban
-        if await store.is_banned(ip):
-            return {"error": "Blocked by security system"}
-
-        # analyze request
-        ip, score = await engine.analyze(request)
-
-        # apply score
-        await engine.evaluate(ip, score)
-
-        # continue
-        response = await call_next(request)
-        return response
 
 
 

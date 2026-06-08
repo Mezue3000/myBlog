@@ -13,8 +13,7 @@ from app.cores.middleware import(
     CacheRequestBodyMiddleware, 
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
-    TenantContextMiddleware,
-    SecurityMiddleware
+    TenantContextMiddleware
 )
 from app.cores.exceptions import (
     http_exception_handler,
@@ -28,6 +27,9 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session, Mapper
 from sqlalchemy.orm import with_loader_criteria
 from app.utility.tenant.tenant_router import current_tenant_id, bypass_rls
+from guard import SecurityMiddleware
+from app.cores.security import security_config
+
 
 
 
@@ -128,7 +130,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.middleware("http")(request_id_middleware)
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(CacheRequestBodyMiddleware)
-app.add_middleware(SecurityMiddleware)
+app.add_middleware(SecurityMiddleware, config=security_config)
 
 
 

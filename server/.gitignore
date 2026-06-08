@@ -1,6 +1,6 @@
 .env
 __pycache__
-my-venv
+myenv
 ec_private.pem
 ec_private.pem.enc
 .gitignore
