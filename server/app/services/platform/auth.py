@@ -3,10 +3,10 @@ from app.cores.logging import get_logger
 from fastapi import BackgroundTasks, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
-from server.app.utility.platform.user import get_user_by_identifier, validate_user_credentials, get_user_by_email, validate_2fa_user
-from server.app.utility.platform.security import validate_password, build_audit_context, create_auth_audit_log_bg, verify_email_otp
-from server.app.utility.platform.auth import is_trusted_device, handle_trusted_device_login, handle_2fa_challenge, handle_remember_device, set_auth_cookies, generate_auth_tokens, extract_refresh_token, rotate_refresh_token, get_refresh_token_payload, create_access_token
-from server.app.schemas.platform.users import TwoFAVerify
+from app.utility.platform.user import get_user_by_identifier, validate_user_credentials, get_user_by_email, validate_2fa_user
+from app.utility.platform.security import validate_password, build_audit_context, create_auth_audit_log_bg, verify_email_otp
+from app.utility.platform.auth import is_trusted_device, handle_trusted_device_login, handle_2fa_challenge, handle_remember_device, set_auth_cookies, generate_auth_tokens, extract_refresh_token, rotate_refresh_token, get_refresh_token_payload, create_access_token
+from app.schemas.platform.users import TwoFAVerify
 from app.utility.tenant.tenant_router import get_personal_tenant
 
 

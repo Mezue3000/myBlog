@@ -1,17 +1,17 @@
 # import dependencies
 from app.cores.logging import get_logger
 from dotenv import load_dotenv
-from server.app.schemas.platform.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
-from server.app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user, slugify
+from app.schemas.platform.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
+from app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user, slugify
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 import os
 from app.models import RolePermission, Role, Permission, User, Tenant, AuditLog
-from server.app.utility.platform.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
+from app.utility.platform.security import hash_password, verify_password, handle_password_reset_request, update_user_password_with_audit, verify_reset_otp, build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from server.app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
-from server.app.utility.platform.auth import extract_refresh_token, get_refresh_token_payload, clear_auth_cookies
+from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
+from app.utility.platform.auth import extract_refresh_token, get_refresh_token_payload, clear_auth_cookies
 
 
  
@@ -88,7 +88,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         )
     
         db.add(new_user)
-        db.flush()
+        await db.flush()
         
         # create personal workspace - no membership needed, owner_id is the proof
         personal_tenant = Tenant(
@@ -102,12 +102,20 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
         await db.refresh(new_user)
         await db.refresh(personal_tenant)
         logger.info("User created successfully: %s", email) 
-    except IntegrityError:
+        
+    except IntegrityError as e:
         await db.rollback()
-        logger.error("Integrity error during registration for email: %s", email)
+
+        logger.exception(
+            "Integrity error during registration",
+            extra={
+                "orig": str(e.orig),
+            }
+        )
+        
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already exists",
+            status_code=status.HTTP_410_GONE,
+            detail=str(e.orig)
         )
 
     return UserRead.model_validate(new_user)

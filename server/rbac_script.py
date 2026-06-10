@@ -5,7 +5,7 @@ import os
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
-from server.app.models import User, Role, Permission, RolePermission
+from app.models import User, Role, Permission, RolePermission
 
 
 
@@ -175,7 +175,7 @@ import os
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
-from server.app.models import User, Role
+from app.models import User, Role
 from pwdlib import PasswordHash
 
 

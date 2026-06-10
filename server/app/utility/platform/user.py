@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
-from server.app.utility.platform.database import get_db
+from app.utility.platform.database import get_db
 from typing import Optional
 from sqlalchemy.orm import selectinload
 from jwt import PyJWKError, ExpiredSignatureError

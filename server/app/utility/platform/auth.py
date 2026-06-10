@@ -9,7 +9,7 @@ from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks, Request, Response
 from app.cores.redis import redis_client
-from server.app.utility.platform.email import create_email_otp, send_verification_otp_email
+from app.utility.platform.email import create_email_otp, send_verification_otp_email
 from app.utility.tenant.tenant_router import get_personal_tenant
 from sqlmodel.ext.asyncio.session import AsyncSession
 

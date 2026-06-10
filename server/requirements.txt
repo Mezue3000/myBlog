@@ -27,9 +27,12 @@ fastapi-limiter==0.1.6
 fastapi-mail==1.5.0
 fastapi_guard==7.1.1
 frozenlist==1.8.0
+future-uuid==1.0.0
 greenlet==3.2.3
 guard-core==3.1.1
 h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
 idna==3.10
 itsdangerous==2.2.0
 Jinja2==3.1.6

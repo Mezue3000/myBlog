@@ -104,15 +104,17 @@ class CustomCORSMiddleware(CORSMiddleware):
 
 
 # debug lifesaver middleware for logging
-async def request_id_middleware(request: Request, call_next):
-    request_id = str(uuid.uuid4())
-    request.state.request_id = request_id
-
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
-
-
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # generate or extract a unique tracing id for monitoring
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        
+        response = await call_next(request)
+        
+        # append it back to the client headers for logging parity
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 
@@ -121,7 +123,12 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
 
-        tenant_id = request.state.tenant_id
+        tenant_id = getattr(request.state, "tenant_id", None)
+
+        if not tenant_id:
+            # safely extract tenant via headers or subdomains 
+            tenant_id = request.headers.get("X-Tenant-ID") 
+            request.state.tenant_id = tenant_id
 
         token = current_tenant_id.set(tenant_id)
 

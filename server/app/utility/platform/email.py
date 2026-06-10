@@ -3,7 +3,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 from typing import Optional
-import json, secrets, os, pyotp, httpx
+import json, secrets, os, pyotp
+import httpx
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks

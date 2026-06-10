@@ -53,6 +53,13 @@ class Permission(SQLModel, table=True):
 
 
 
+# tenant-scoped marker mixin
+class TenantScopedMixin:
+    pass
+    
+
+
+
 # create user model
 class User(SQLModel, table=True):
     __tablename__ = "users"
@@ -78,13 +85,44 @@ class User(SQLModel, table=True):
     role_id: Optional[int] = Field(foreign_key="roles.role_id", index=True, nullable=False)
     active_tenant_id: Optional[UUID] = Field(
         default=None,
-        foreign_key="tenants.tenant_id",
-        index=True
-    )
+        sa_column=sa.Column(
+            sa.ForeignKey(
+                "tenants.tenant_id", 
+                 name="fk_user_active_tenant", 
+                 use_alter=True
+            ),
+            nullable=True,
+            index=True
+    )   )
     
     # create relationship
     role: Optional[Role] = Relationship(back_populates="users")
-    tenant_memberships: list["TenantMembership"] = Relationship(back_populates="user") 
+    
+    tenant_memberships: list["TenantMembership"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"foreign_keys": "[TenantMembership.user_id]"}
+    ) 
+    
+    owned_tenants: list["Tenant"] = Relationship(
+        back_populates="owner",
+        sa_relationship_kwargs={
+            "foreign_keys": "[Tenant.owner_id]"
+        }
+    )
+    
+    deleted_tenants: list["Tenant"] = Relationship(
+        back_populates="deleted_by_user",
+        sa_relationship_kwargs={
+            "foreign_keys": "[Tenant.deleted_by]"
+        }
+    )
+
+    active_tenant: Optional["Tenant"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[User.active_tenant_id]"
+        }
+    )
+    
     posts: Mapped[list["Post"]] = Relationship(back_populates="user")
     
     # actions, this user performed
@@ -142,6 +180,18 @@ class Tenant(SQLModel, table=True):
     primary_colour: str = Field(default="#1877F2", max_length=25)
 
     # create relationships
+    owner: Optional["User"] = Relationship(
+        back_populates="owned_tenants",
+        sa_relationship_kwargs={
+            "foreign_keys": "[Tenant.owner_id]"
+        }
+    )
+    deleted_by_user: Optional["User"] = Relationship(
+        back_populates="deleted_tenants",
+        sa_relationship_kwargs={
+            "foreign_keys": "[Tenant.deleted_by]"
+        }
+    )
     members: list["TenantMembership"] = Relationship(back_populates="tenant") 
     tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
     api_keys: list["APIKey"] = Relationship(back_populates="tenant")
@@ -149,13 +199,8 @@ class Tenant(SQLModel, table=True):
     subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
     audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
     
-    
-    
-    
-# tenant-scoped marker mixin
-class TenantScopedMixin:
-    pass
-    
+
+
     
     
 # create tenant-membership model
@@ -182,7 +227,17 @@ class TenantMembership(TenantScopedMixin, SQLModel, table=True):
     
     # create relationships  
     tenant: "Tenant" = Relationship(back_populates="members")
-    user: "User" = Relationship(back_populates="tenant_memberships")
+    user: "User" = Relationship(
+        back_populates="tenant_memberships",
+        sa_relationship_kwargs={
+            "foreign_keys": "[TenantMembership.user_id]"
+        }
+    )
+    deleted_by_user: Optional["User"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[TenantMembership.deleted_by]"
+        }
+    )    
     
     # add unique constraint(one user per tenant)
     __table_args__ = (
@@ -212,6 +267,11 @@ class TenantInvitation(TenantScopedMixin, SQLModel, table=True):
 
     # create relationship
     tenant: "Tenant" = Relationship(back_populates="tenant_invitations")
+    inviter: Optional["User"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[TenantInvitation.invited_by]"
+        }
+    )
     
 
 

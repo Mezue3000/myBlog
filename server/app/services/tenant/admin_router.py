@@ -14,9 +14,9 @@ from app.utility.tenant.invite import send_tenant_invitation_email, send_bulk_in
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from datetime import datetime, timezone
 import os
-from server.app.schemas.platform.users import UserCreate, UserRead
-from server.app.utility.platform.user import validate_unique_fields, slugify
-from server.app.utility.platform.security import hash_password
+from app.schemas.platform.users import UserCreate, UserRead
+from app.utility.platform.user import validate_unique_fields, slugify
+from app.utility.platform.security import hash_password
 
 
 

@@ -11,7 +11,7 @@ load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/util
 
 # fetch redis credentials
 REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = int(os.getenv("REDIS_PORT"))
+REDIS_PORT = os.getenv("REDIS_PORT")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 REDIS_USER = os.getenv("REDIS_USER", "default")
 

@@ -3,14 +3,14 @@ from fastapi import APIRouter, Depends, Query, status, Response, Request
 from app.cores.logging import get_logger
 from fastapi_limiter.depends import RateLimiter
 from typing import Annotated, Optional
-from server.app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
+from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
 from sqlmodel.ext.asyncio.session import AsyncSession
-from server.app.utility.platform.database import get_db
+from app.utility.platform.database import get_db
 from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
-from server.app.utility.platform.security import get_identifier_factory, hash_password, verify_password
-from server.app.utility.platform.user import get_current_active_user
-from server.app.services.platform.global_admin import get_paginated, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account
+from app.utility.platform.security import get_identifier_factory, hash_password, verify_password
+from app.utility.platform.user import get_current_active_user
+from app.services.platform.global_admin import get_paginated, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account
 
 
 

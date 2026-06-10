@@ -1,5 +1,34 @@
 # import dependencies
+from dotenv import load_dotenv
 from guard import SecurityConfig
+import os
+
+
+
+
+
+# load environment variable
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
+
+
+
+
+# Load credentials from system memory
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+
+# safeguard check
+if not all([REDIS_HOST, REDIS_PORT, REDIS_PASSWORD]):
+    raise ValueError(
+        "CRITICAL: Redis Cloud credentials missing from environment. "
+        "Check that your .env file defines REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD."
+    )
+
+# redis url
+redis_cloud_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
+
+
 
 
 
@@ -7,8 +36,8 @@ from guard import SecurityConfig
 security_config = SecurityConfig(
     # redis stateful storage engine
     enable_redis=True,
-    redis_url="redis://localhost:6379/0",
-    redis_prefix="myapp:security:",
+    redis_url=redis_cloud_url,
+    redis_prefix="mezue-db:security:",
 
     # consolidated penetration engine
     enable_penetration_detection=True,
@@ -33,7 +62,7 @@ security_config = SecurityConfig(
     
     # environment gates & infrastructure constraints
     enforce_https=False,
-    block_cloud_providers=False,
+    block_cloud_providers=set(),
 
     # network proxies & reverse proxy identity trust
     trust_x_forwarded_for=True,

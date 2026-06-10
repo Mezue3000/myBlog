@@ -1,7 +1,13 @@
 # import dependencies
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
+
+# load environment variable
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
+
+
 from app.cores.logging import setup_logging
 from contextlib import asynccontextmanager
+from guard.lifespan import guard_lifespan
 from fastapi import FastAPI, HTTPException
 from app.models import AuditLog, TenantScopedMixin
 from sqlalchemy import event 
@@ -9,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi_limiter import FastAPILimiter
 from app.cores.redis import redis_client
 from app.cores.middleware import(
-    request_id_middleware,
+    RequestIDMiddleware,
     CacheRequestBodyMiddleware, 
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
@@ -20,8 +26,8 @@ from app.cores.exceptions import (
     starlette_http_exception_handler,
     unhandled_exception_handler,
 )
-from server.app.cruds.platform import users
-from server.app.cruds.platform import global_admins, login
+from app.cruds.platform import users
+from app.cruds.platform import global_admins, login
 from app.cruds.tenant import admin_router, members_router, tenant_router
 from sqlalchemy import event
 from sqlalchemy.orm import Session, Mapper
@@ -32,10 +38,6 @@ from app.cores.security import security_config
 
 
 
-
-
-# load environment variable
-# load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
 # set up logging
@@ -80,6 +82,7 @@ def add_tenant_filter(execute_state):
         )
     )
     
+    
 @event.listens_for(Session, "before_flush")
 def set_tenant_id(session, flush_context, instances):
 
@@ -102,12 +105,18 @@ def set_tenant_id(session, flush_context, instances):
 # add rate-limit
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await FastAPILimiter.init(redis_client)
-    try:
-        yield
-    finally:
-        if redis_client:
-            await redis_client.close()
+    # nest everything inside the fastapi-guard optimized setup engine
+    async with guard_lifespan(app):
+        
+        # initialize your legacy rate limiter sharing the redis connection instance
+        await FastAPILimiter.init(redis_client)
+        
+        try:
+            yield
+        finally:
+            # clean up and close connection pools on server shutdown signals
+            if redis_client:
+                await redis_client.close()
         
         
         
@@ -117,7 +126,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 
-# add exception handlers
+# add global exception handlers
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
@@ -125,12 +134,14 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
 # add middlewares
-app.add_middleware(CustomCORSMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-app.middleware("http")(request_id_middleware)
 app.add_middleware(TenantContextMiddleware)
+app.middleware(RequestIDMiddleware)
 app.add_middleware(CacheRequestBodyMiddleware)
 app.add_middleware(SecurityMiddleware, config=security_config)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CustomCORSMiddleware)
+
+
 
 
 
@@ -139,5 +150,5 @@ app.include_router(login.router)
 app.include_router(users.router)
 app.include_router(global_admins.router) 
 app.include_router(admin_router.router)
-app.include_router(members_router.router)
+# app.include_router(members_router.router)
 app.include_router(tenant_router.router)

@@ -1,11 +1,11 @@
 # import dependencies
 from fastapi import APIRouter, Depends
 from fastapi_limiter.depends import RateLimiter
-from server.app.utility.platform.security import get_identifier
+from app.utility.platform.security import get_identifier
 from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
 from app.models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
-from server.app.utility.platform.database import get_db
+from app.utility.platform.database import get_db
 from app.utility.platform.user import get_current_active_user
 from app.services.tenant.tenant_router import create_team_service, get_tenants_service, switch_tenant_service
 from uuid import UUID

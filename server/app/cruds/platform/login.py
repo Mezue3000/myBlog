@@ -1,15 +1,15 @@
 # import necessary dependencies
 from fastapi import APIRouter, Depends, Request, Response, BackgroundTasks
 from fastapi_limiter.depends import RateLimiter
-from server.app.schemas.platform.jwts import Token
+from app.schemas.platform.jwts import Token
 from typing import Union
-from server.app.schemas.platform.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
+from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
-from server.app.utility.platform.database import get_db 
-from server.app.utility.platform.security import get_identifier
-from server.app.services.platform.auth import authenticate_users, confirm_2fa, refresh_session_token
-from server.app.schemas.platform.users import TwoFAVerify 
+from app.utility.platform.database import get_db 
+from app.utility.platform.security import get_identifier
+from app.services.platform.auth import authenticate_users, confirm_2fa, refresh_session_token
+from app.schemas.platform.users import TwoFAVerify 
 
 
 
@@ -55,9 +55,15 @@ async def verify_2fa(
     request: Request,
     response: Response,
     data: TwoFAVerify,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    return await confirm_2fa(request=request, response=response, data=data, db=db)
+    return await confirm_2fa(
+        request=request, 
+        response=response, 
+        data=data, db=db, 
+        background_tasks=background_tasks
+    )
    
    
    
