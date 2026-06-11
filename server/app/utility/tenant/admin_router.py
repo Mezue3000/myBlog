@@ -2,7 +2,9 @@
 from uuid import UUID
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.tenant.tenant_router import get_active_tenant_membership
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
+from app.models import TenantMembership
+from app.utility.tenant.members_router import get_current_membership
 
 
 
@@ -60,3 +62,30 @@ async def validate_tenant_role_hierarchy(
         )
 
     return target_membership
+
+
+
+
+
+# role checker validation
+def require_tenant_role(*allowed_roles: str):
+
+    async def checker(membership: TenantMembership = Depends(get_current_membership)) -> TenantMembership:
+        
+        if membership.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions"
+            )
+
+        return membership
+
+    return checker
+
+
+
+require_owner = require_tenant_role("owner")
+
+
+
+require_admin = require_tenant_role("owner", "admin")

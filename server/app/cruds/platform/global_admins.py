@@ -3,14 +3,15 @@ from fastapi import APIRouter, Depends, Query, status, Response, Request
 from app.cores.logging import get_logger
 from fastapi_limiter.depends import RateLimiter
 from typing import Annotated, Optional
-from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
+from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead, PaginatedTenants
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
 from app.utility.platform.security import get_identifier_factory, hash_password, verify_password
 from app.utility.platform.user import get_current_active_user
-from app.services.platform.global_admin import get_paginated, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account
+from app.services.platform.global_admin import get_paginated_users, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account, get_paginated_tenants, admins_deactivate_tenant, admins_activate_tenant
+from uuid import UUID
 
 
 
@@ -38,9 +39,9 @@ async def get_users_paginated(
     is_deleted: Annotated[Optional[bool], Query(description="Filter by delete status")] = None,
     country: Annotated[Optional[str], Query(description="Filter by country")] = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
-    return await get_paginated(
+    return await get_paginated_users(
         page=page,
         size=size,
         search=search,
@@ -48,7 +49,7 @@ async def get_users_paginated(
         is_deleted=is_deleted,
         country=country,
         current_user=current_user,
-        db=db,
+        db=db
     ) 
    
     
@@ -74,7 +75,7 @@ async def admin_update_user(
     request: Request,
     user_data: UserUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await admin_change_user(
         user_id=user_id,
@@ -106,13 +107,13 @@ async def admin_deactivate_user(
     user_id: int,
     request: Request,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await admins_deactivate_user(
         user_id=user_id,
         request=request,
         current_user=current_user,
-        db=db,
+        db=db
     )
 
 
@@ -137,13 +138,13 @@ async def admin_activate_user(
     user_id: int,
     request: Request,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await admin_get_user_activated(
         user_id=user_id,
         request=request,
         current_user=current_user,
-        db=db,
+        db=db
     )
 
 
@@ -206,4 +207,78 @@ async def admin_restore_user(
        request=request,
        current_user=current_user,
        db=db
+    )
+   
+   
+   
+   
+   
+# admin endpoint to retrieve tenants
+@router.get("/tenants", response_model=PaginatedTenants)
+async def get_tenants_paginated(
+    *,
+    page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
+    size: Annotated[int, Query(ge=1, le=100, description="Items per page (max 100)")] = 10,
+    search: Annotated[Optional[str], Query(description="Search by tenant name or slug")] = None,
+    tenant_type: Annotated[Optional[str], Query(description="Filter by tenant type")] = None,
+    plan: Annotated[Optional[str], Query(description="Filter by subscription plan")] = None,
+    is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
+    is_deleted: Annotated[Optional[bool], Query(description="Filter by deleted status")] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_paginated_tenants(
+        page=page,
+        size=size,
+        search=search,
+        tenant_type=tenant_type,
+        plan=plan,
+        is_active=is_active,
+        is_deleted=is_deleted,
+        current_user=current_user,
+        db=db
+    )
+    
+    
+    
+    
+    
+# endpoint to deactivate tenant
+@router.patch(
+    "/tenants/{tenant_id}/deactivate",
+    status_code=status.HTTP_200_OK,
+)
+async def deactivate_tenant(
+    tenant_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await admins_deactivate_tenant(
+        tenant_id=tenant_id,
+        request=request,
+        current_user=current_user,
+        db=db
+    )
+    
+    
+    
+    
+    
+# endpoint to activate tenant
+@router.patch(
+    "/tenants/{tenant_id}/activate",
+    status_code=status.HTTP_200_OK,
+)
+async def activate_tenant(
+    tenant_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    return await admins_activate_tenant(
+        tenant_id=tenant_id,
+        request=request,
+        current_user=current_user,
+        db=db
     )

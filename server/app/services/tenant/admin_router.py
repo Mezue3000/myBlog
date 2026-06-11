@@ -398,7 +398,7 @@ async def register_invited_member(
             name="private",
             slug=slug,
             type="personal",
-            owner_id=new_user.user_id,
+            owner_id=new_user.user_id
         )
 
         db.add(personal_tenant)
@@ -619,16 +619,12 @@ async def delete_tenant_service(
             actor_user_id=current_user.user_id,
             action="tenant.deleted",
             resource_type="tenant",
-            resource_id=str(
-                tenant.tenant_id
-            ),
+            resource_id=str(tenant.tenant_id),
             metadata={
                 "tenant_name": tenant.name,
-                "deleted_by": str(
-                    current_user.user_id
-                ),
+                "deleted_by": current_user.user_id
             },
-        )
+        ) 
 
         db.add(audit_log)
         await db.commit()

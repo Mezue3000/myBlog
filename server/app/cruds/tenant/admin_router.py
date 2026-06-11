@@ -2,20 +2,21 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from uuid import UUID
 from app.schemas.tenant.admin_router import InviteMembersRequest, AcceptInvitationRequest
-from app.models import Tenant, User
+from app.models import Tenant, User, TenantMembership
 from app.utility.tenant.tenant_router import get_current_tenant
 from app.utility.platform.user import get_current_active_user
+from app.utility.tenant.admin_router import require_admin, require_owner 
 from pydantic import EmailStr
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.services.tenant.admin_router import invite_members_service, accept_invitation_service, register_invited_member, delete_member_service, delete_tenant_service, deactivate_member_service, activate_member_service
+from app.services.tenant.admin_router import invite_members_service, accept_invitation_service, register_invited_member, delete_member_service, deactivate_member_service, activate_member_service
 from app.schemas.platform.users import UserCreate
 
 
 
 
 # initialize router
-router = APIRouter(prefix="/tenant-admin",  tags=["tenant-admins"])
+router = APIRouter(prefix="/TenantMembership-admin",  tags=["tenant-admins"])
 
     
  
@@ -27,6 +28,7 @@ async def invite_members(
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
+    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     # prevent tenant mismatch
@@ -41,7 +43,7 @@ async def invite_members(
         emails=data.emails,
         current_user=current_user,
         background_tasks=background_tasks,
-        db=db,
+        db=db
     )
 
 
@@ -58,7 +60,7 @@ async def accept_invitation(
     return await accept_invitation_service(
         token=data.token,
         current_user=current_user,
-        db=db,
+        db=db
     )
 
 
@@ -88,30 +90,14 @@ async def remove_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
+    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     return await delete_member_service(
         tenant=tenant,
         member_id=member_id,
         current_user=current_user,
-        db=db,
-    )
-    
-    
-    
-    
-    
-# endpoint to soft-delete tenant
-@router.delete("/tenants")
-async def delete_tenant(
-    tenant: Tenant = Depends(get_current_tenant),
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    return await delete_tenant_service(
-        tenant=tenant,
-        current_user=current_user,
-        db=db,
+        db=db
     )
     
     
@@ -124,13 +110,14 @@ async def deactivate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
+    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     return await deactivate_member_service(
         tenant=tenant,
         member_id=member_id,
         current_user=current_user,
-        db=db,
+        db=db
     )
     
     
@@ -143,7 +130,8 @@ async def activate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    _: TenantMembership = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ):
     return await activate_member_service(
         tenant=tenant,

@@ -1,14 +1,14 @@
 # import dependencies
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks, Response, Request
 from app.cores.logging import get_logger
-from app.utility.platform.global_admin import validate_admin_access, build_user_filters, fetch_users, count_users, get_user_by_id_with_role 
+from app.utility.platform.global_admin import validate_admin_access, build_user_filters, fetch_users, count_users, get_user_by_id_with_role, build_tenant_filters, count_tenants, fetch_tenants, resolve_new_role, apply_updates_and_track_changes, persist_with_audit, prevent_self_action, ensure_user_state, verify_admin_ownership, build_audit_context, create_auth_audit_log_bg, get_tenant_by_id, ensure_tenant_state, persist_tenant_with_audit
 from math import ceil
 from typing import Annotated, Optional
-from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead
+from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead, PaginatedTenants, TenantSummary
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Role, AuditLog
 from app.utility.platform.user import get_current_active_user, logout_all_devices_for_user, validate_unique_fields
-from app.utility.platform.global_admin import resolve_new_role, apply_updates_and_track_changes, persist_with_audit, prevent_self_action, ensure_user_state, verify_admin_ownership, build_audit_context, create_auth_audit_log_bg
+from uuid import UUID
 
 
 
@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 
 
 # function to retrieve users with pagination
-async def get_paginated(
+async def get_paginated_users(
     *,
     page: int,
     size: int,
@@ -344,12 +344,7 @@ async def admin_restore_user_account(
     )
 
     # define audit changes
-    changes = {
-        "is_deleted": {
-            "old": True,
-            "new": False
-        }
-    }
+    changes = {"is_deleted": {"old": True, "new": False}}
 
     # persist + audit (transactional)
     await persist_with_audit(
@@ -363,3 +358,211 @@ async def admin_restore_user_account(
     )
 
     return {"detail": "User account restored successfully"}
+
+
+
+
+
+
+# **********************Tenants Tenants Tenants*************************
+
+# function to retrieve tenants with pagination
+async def get_paginated_tenants(
+    *,
+    page: int,
+    size: int,
+    search: Optional[str],
+    is_active: Optional[bool],
+    is_deleted: Optional[bool],
+    current_user: User,
+    db: AsyncSession,
+):
+    # validate access
+    validate_admin_access(current_user)
+
+    # log admin action
+    logger.info(
+        "admin_view_tenants",
+        extra={
+            "admin_id": current_user.user_id,
+            "page": page,
+            "size": size,
+            "filters": {
+                "search": search,
+                "is_active": is_active,
+                "is_deleted": is_deleted,
+            },
+        },
+    )
+
+    # build filters
+    filters = build_tenant_filters(
+        search=search,
+        is_active=is_active,
+        is_deleted=is_deleted,
+    )
+
+    # count query
+    total_tenants = await count_tenants(db=db, filters=filters)
+
+    # pagination
+    offset = (page - 1) * size
+    total_pages = (
+        ceil(total_tenants / size)
+        if total_tenants > 0
+        else 1
+    )
+
+    # fetch tenants
+    tenants = await fetch_tenants(
+        db=db,
+        filters=filters,
+        offset=offset,
+        limit=size,
+    )
+    
+    tenant_items = [
+        TenantSummary(
+            tenant_id=row["tenant"].tenant_id,
+            name=row["tenant"].name,
+            slug=row["tenant"].slug,
+            is_active=row["tenant"].is_active,
+            is_deleted=row["tenant"].is_deleted,
+            owner_name=row["owner_name"],
+            owner_email=row["owner_email"],
+            member_count=row["member_count"],
+            created_at=row["tenant"].created_at,
+        )
+        for row in tenants
+    ]
+    
+    # response
+    return PaginatedTenants(
+        items=tenant_items,
+        total=total_tenants,
+        page=page,
+        size=size,
+        total_pages=total_pages
+    )
+
+
+
+
+
+# function to deactivate tenant
+async def admins_deactivate_tenant(
+    *,
+    tenant_id: UUID,
+    request: Request,
+    current_user: User,
+    db: AsyncSession,
+):
+    # fetch target tenant
+    target_tenant = await get_tenant_by_id(
+        db=db,
+        tenant_id=tenant_id,
+    )
+
+    # add logging
+    logger.info(
+        "admin_deactivate_tenant",
+        extra={
+            "admin_id": current_user.user_id,
+            "target_tenant_id": str(tenant_id)
+        },
+    )
+
+    # enforce RBAC hierarchy
+    verify_admin_ownership(
+        resource_owner=target_tenant,
+        current_user=current_user
+    )
+
+    # prevent redundant operation
+    ensure_tenant_state(
+        target_tenant,
+        field="is_active",
+        expected=True,
+        error_message="Tenant already deactivated"
+    )
+
+    # apply state change + audit
+    changes = {"is_active": {"old": True, "new": False}}
+
+    await persist_tenant_with_audit(
+        db=db,
+        request=request,
+        current_user=current_user,
+        tenant=target_tenant,
+        action="DEACTIVATE_TENANT",
+        changes=changes,
+        update_callback=lambda tenant: setattr(
+            tenant,
+            "is_active",
+            False,
+        ),
+    )
+
+    return {"detail": "Tenant deactivated successfully"}
+
+
+
+
+
+# function to activate tenant
+async def admins_activate_tenant(
+    *,
+    tenant_id: UUID,
+    request: Request,
+    current_user: User,
+    db: AsyncSession,
+):
+    # fetch target tenant
+    target_tenant = await get_tenant_by_id(
+        db=db,
+        tenant_id=tenant_id,
+    )
+
+    # logging
+    logger.info(
+        "admin_activate_tenant",
+        extra={
+            "admin_id": current_user.user_id,
+            "target_tenant_id": str(tenant_id)
+        },
+    )
+
+    # RBAC check
+    verify_admin_ownership(
+        resource_owner=target_tenant,
+        current_user=current_user,
+    )
+
+    # prevent redundant operation
+    ensure_tenant_state(
+        target_tenant,
+        field="is_active",
+        expected=False,
+        error_message="Tenant is already active",
+    )
+
+    # audit changes
+    changes = {"is_active": {"old": False, "new": True}}
+
+    await persist_tenant_with_audit(
+        db=db,
+        request=request,
+        current_user=current_user,
+        tenant=target_tenant,
+        action="ACTIVATE_TENANT",
+        changes=changes,
+        update_callback=lambda tenant: setattr(
+            tenant,
+            "is_active",
+            True,
+        ),
+    )
+
+    return {
+        "detail": "Tenant activated successfully"
+    }

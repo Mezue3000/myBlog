@@ -3,14 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from app.cores.logging import get_logger
 from fastapi_limiter.depends import RateLimiter
 from math import ceil
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Callable, Any
 from sqlalchemy.orm import selectinload 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from sqlmodel import select, or_, func
-from app.models import User, Role, AuditLog
+from app.models import User, Role, AuditLog, Tenant, TenantMembership
 from app.utility.platform.security import build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from uuid import UUID
 
 
 
@@ -100,7 +101,7 @@ def verify_admin_ownership(
  
 
 
-# function to build filters 
+# function to build user filters 
 def build_user_filters(
     *,
     search: Optional[str],
@@ -332,3 +333,257 @@ def ensure_user_state(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=error_message
         )
+        
+        
+        
+        
+        
+# **************Tenants Tenants  Tenants****************
+# function to build tenant filters
+def build_tenant_filters(
+    *,
+    search: Optional[str],
+    tenant_type: Optional[str],
+    plan: Optional[str],
+    is_active: Optional[bool],
+    is_deleted: Optional[bool],
+    current_level: int
+) -> list:
+
+    filters = []
+
+    # search
+    if search:
+        filters.append(
+            or_(
+                Tenant.name.ilike(f"%{search}%"),
+                Tenant.slug.ilike(f"%{search}%"),
+                User.username.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%")
+            )
+        )
+
+    # type filter
+    if tenant_type is not None:
+        filters.append(Tenant.type == tenant_type)
+
+    # plan filter
+    if plan is not None:
+        filters.append(Tenant.plan == plan)
+
+    # active filter
+    if is_active is not None:
+        filters.append(Tenant.is_active == is_active)
+
+    # deleted filter
+    if is_deleted is not None:
+        filters.append(Tenant.is_deleted == is_deleted)
+    
+    
+    # role visibility (strict downward)
+    allowed_roles = [
+        role_name
+        for role_name, level in ROLE_HIERARCHY.items()
+        if level < current_level
+    ]
+
+    if not allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to view tenants"
+        )
+
+    filters.append(
+        User.role.has(Role.name.in_(allowed_roles))
+    )
+    
+    return filters
+
+
+
+
+
+# function to count tenants
+async def count_tenants(
+    db: AsyncSession,
+    filters: list
+) -> int:
+
+    statement = select(
+        func.count(Tenant.tenant_id)
+    )
+
+    if filters:
+        statement = statement.where(*filters)
+
+    result = await db.exec(statement)
+
+    return result.one()
+
+
+
+
+
+# function to fetch tenants
+async def fetch_tenants(
+    *,
+    db: AsyncSession,
+    filters: list,
+    offset: int,
+    limit: int
+):
+
+    statement = (
+        select(
+            Tenant,
+            User.username.label("owner_name"),
+            User.email.label("owner_email"),
+            func.count(
+                TenantMembership.membership_id
+            ).label("member_count"),
+        )
+        .outerjoin(
+            User,
+            Tenant.owner_id == User.user_id,
+        )
+        .outerjoin(
+            TenantMembership,
+            (
+                TenantMembership.tenant_id
+                == Tenant.tenant_id
+            )
+            & (
+                TenantMembership.is_deleted.is_(False)
+            )
+        )
+        .where(*filters)
+        .group_by(Tenant.tenant_id, User.user_id)
+        .order_by(Tenant.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await db.exec(statement)
+    rows = result.all()
+
+    return [
+        {
+            "tenant": tenant,
+            "owner_name": owner_name,
+            "owner_email": owner_email,
+            "member_count": member_count
+        }
+        for tenant, owner_name, owner_email, member_count in rows
+    ]
+
+
+
+
+
+# function to get tenant by id
+async def get_tenant_by_id(
+    db: AsyncSession,
+    tenant_id: UUID,
+) -> Tenant:
+
+    tenant = await db.get(
+        Tenant,
+        tenant_id
+    )
+
+    if not tenant:
+        raise HTTPException(
+            status_code=404,
+            detail="Tenant not found"
+        )
+
+    return tenant
+
+
+
+
+
+# state validation function
+def ensure_tenant_state(
+    tenant: Tenant,
+    *,
+    field: str,
+    expected: bool,
+    error_message: str,
+):
+    if getattr(tenant, field) != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=error_message
+        )
+        
+        
+        
+        
+        
+# create audit-log
+async def create_audit_log(
+    *,
+    db: AsyncSession,
+    actor_id: int,
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    changes: dict | None,
+    request: Request,
+) -> AuditLog:
+
+    audit_log = AuditLog(
+        actor_id=actor_id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        ip_address=request.client.host
+        if request.client
+        else None,
+        user_agent=request.headers.get(
+            "user-agent"
+        ),
+        changes=changes,
+    )
+
+    db.add(audit_log)
+
+    return audit_log
+     
+     
+     
+     
+
+# fuction to persist audit
+async def persist_tenant_with_audit(
+    *,
+    db: AsyncSession,
+    request: Request,
+    current_user: User,
+    tenant: Tenant,
+    action: str,
+    changes: dict,
+    update_callback: Callable[[Tenant], Any],
+) -> Tenant:
+    
+    # apply update
+    update_callback(tenant)
+
+    db.add(tenant)
+
+    # audit log
+    await create_audit_log(
+        db=db,
+        actor_id=current_user.user_id,
+        action=action,
+        entity_type="tenant",
+        entity_id=str(tenant.tenant_id),
+        changes=changes,
+        request=request,
+    )
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    return tenant
