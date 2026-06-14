@@ -74,6 +74,8 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None, nullable=True)
+    provider: str = Field(default="local", max_length=20, nullable=True)
+    provider_id: Optional[str] = Field(default=None, max_length=255)
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
@@ -354,7 +356,7 @@ class Subscription(TenantScopedMixin, SQLModel, table=True):
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    owner_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
