@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
-from app.utility.platform.security import get_identifier_factory, hash_password, verify_password
+from app.utility.platform.security import get_identifier_factory, hash_password, verify_password, require_super_admin, require_admin, require_moderator
 from app.utility.platform.user import get_current_active_user
 from app.services.platform.global_admin import get_paginated_users, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account, get_paginated_tenants, admins_deactivate_tenant, admins_activate_tenant
 from uuid import UUID
@@ -34,11 +34,10 @@ async def get_users_paginated(
     page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
     size: Annotated[int, Query(ge=1, le=100, description="Items per page (max 100)")] = 10,
     search: Annotated[Optional[str], Query(description="Search by username or email")] = None,
-    # add more filters
     is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
     is_deleted: Annotated[Optional[bool], Query(description="Filter by delete status")] = None,
     country: Annotated[Optional[str], Query(description="Filter by country")] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_moderator),
     db: AsyncSession = Depends(get_db)
 ):
     return await get_paginated_users(
@@ -74,7 +73,7 @@ async def admin_update_user(
     user_id: int,
     request: Request,
     user_data: UserUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_moderator),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_change_user(
@@ -106,7 +105,7 @@ async def admin_update_user(
 async def admin_deactivate_user(
     user_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_deactivate_user(
@@ -137,7 +136,7 @@ async def admin_deactivate_user(
 async def admin_activate_user(
     user_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_get_user_activated(
@@ -168,7 +167,7 @@ async def admin_activate_user(
 async def admin_delete_user(
     user_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_delete_user_account(
@@ -199,7 +198,7 @@ async def admin_delete_user(
 async def admin_restore_user(
     user_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
    return await admin_restore_user_account(
@@ -224,7 +223,7 @@ async def get_tenants_paginated(
     plan: Annotated[Optional[str], Query(description="Filter by subscription plan")] = None,
     is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
     is_deleted: Annotated[Optional[bool], Query(description="Filter by deleted status")] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_moderator),
     db: AsyncSession = Depends(get_db)
 ):
     return await get_paginated_tenants(
@@ -251,7 +250,7 @@ async def get_tenants_paginated(
 async def deactivate_tenant(
     tenant_id: UUID,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_deactivate_tenant(
@@ -273,7 +272,7 @@ async def deactivate_tenant(
 async def activate_tenant(
     tenant_id: UUID,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_activate_tenant(

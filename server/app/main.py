@@ -105,16 +105,16 @@ def set_tenant_id(session, flush_context, instances):
 # add rate-limit
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # nest everything inside the fastapi-guard optimized setup engine
+    # nest inside the fastapi-guard
     async with guard_lifespan(app):
         
-        # initialize your legacy rate limiter sharing the redis connection instance
+        # initialize rate limiter sharing the redis connection instance
         await FastAPILimiter.init(redis_client)
         
         try:
             yield
         finally:
-            # clean up and close connection pools on server shutdown signals
+            # close connection pools on server shutdown signals
             if redis_client:
                 await redis_client.close()
         

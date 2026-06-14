@@ -32,7 +32,7 @@ async def login(
     response: Response,
     background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(), 
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await authenticate_users(
         request=request,
@@ -48,7 +48,7 @@ async def login(
 # endpoint for 2FA verification
 @router.post(
     "/2fa/verify",
-    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))],
+    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))]
 )
 
 async def verify_2fa(
@@ -56,7 +56,7 @@ async def verify_2fa(
     response: Response,
     data: TwoFAVerify,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await confirm_2fa(
         request=request, 

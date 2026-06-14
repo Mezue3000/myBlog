@@ -278,3 +278,46 @@ def build_audit_context(request: Request):
         "user_agent": user_agent,
         "endpoint": endpoint,
     } 
+    
+    
+    
+    
+
+# admin-role validation function
+def require_admin_role(*allowed_roles: str):
+
+    async def checker(
+        current_user: User = Depends(get_current_active_user),
+    ) -> User:
+
+        role = current_user.role.name.lower()
+
+        if role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail="Insufficient permissions",
+            )
+
+        return current_user
+
+    return checker
+
+
+
+
+
+# admin-role checker
+require_super_admin = require_admin_role(
+    "super_admin"
+)
+
+require_admin = require_admin_role(
+    "super_admin",
+    "global_admin"
+)
+
+require_moderator = require_admin_role(
+    "super_admin",
+    "global_admin",
+    "moderator"
+)

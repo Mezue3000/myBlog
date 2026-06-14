@@ -647,7 +647,7 @@ async def delete_tenant_service(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error",
+            detail="Database error"
         )
 
     except Exception as e:
@@ -658,7 +658,7 @@ async def delete_tenant_service(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete tenant",
+            detail="Failed to delete tenant"
         )
         
         
@@ -683,7 +683,7 @@ async def deactivate_member_service(
         if member_id == current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot deactivate yourself",
+                detail="You cannot deactivate yourself"
             )
         
         target_membership = await validate_tenant_role_hierarchy(
@@ -711,12 +711,7 @@ async def deactivate_member_service(
             action="member.deactivated",
             resource_type="tenant_membership",
             resource_id=str(target_membership.membership_id),
-            changes={
-                "is_active": {
-                    "old": True,
-                    "new": False
-                }
-            }
+            changes={"is_active": {"old": True, "new": False}}
         )
 
         db.add(audit_log)
