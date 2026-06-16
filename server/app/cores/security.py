@@ -6,29 +6,24 @@ import os
 
 
 
-
 # load environment variable
 load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
 
 
 
-
-# Load credentials from system memory
+# Load credentials
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 # safeguard check
 if not all([REDIS_HOST, REDIS_PORT, REDIS_PASSWORD]):
-    raise ValueError(
-        "CRITICAL: Redis Cloud credentials missing from environment. "
-        "Check that your .env file defines REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD."
-    )
+    raise ValueError("CRITICAL: Redis Cloud credentials missing from environment.")
+
+
 
 # redis url
 redis_cloud_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
-
-
 
 
 
@@ -57,7 +52,7 @@ security_config = SecurityConfig(
         "nmap",
         "zgrab",
         "wpscan",
-        "acunetix",
+        "acunetix"
     ],
     
     # environment gates & infrastructure constraints
@@ -68,13 +63,13 @@ security_config = SecurityConfig(
     trust_x_forwarded_for=True,
     trusted_proxies=[
         "127.0.0.1",
-        "10.0.0.0/8",
+        "10.0.0.0/8"
     ],
     
     # global middleware bypass routes
     excluded_paths=[
         "/health",
         "/docs",
-        "/openapi.json",
+        "/openapi.json"
     ]
 )

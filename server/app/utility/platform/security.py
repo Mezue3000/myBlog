@@ -107,7 +107,7 @@ async def create_auth_audit_log_bg(
     action: str,
     user_id: Optional[int] = None,
     metadata: dict,
-    context: dict,
+    context: dict
 ):
     async with AsyncSession(async_engine) as db:
         audit_entry = AuditLog(
@@ -149,10 +149,7 @@ async def handle_password_reset_request(
     
 # password email verification/extraction
 async def verify_reset_otp(otp: str) -> str:
-    email = await verify_email_otp(
-        otp_code=otp,
-        scope="password_reset"
-    )
+    email = await verify_email_otp(otp_code=otp, scope="password_reset")
 
     if not email:
         logger.warning(
@@ -201,7 +198,6 @@ async def update_user_password_with_audit(
         )
 
         db.add(audit_entry)
-
         await db.commit()
 
     except Exception as e:
@@ -283,6 +279,41 @@ def build_audit_context(request: Request):
     
     
 
+# function to safely fire audit-log
+async def create_auth_audit_log_safe(
+    create_auth_audit_log_bg,
+    *,
+    action: str,
+    user_id: str,
+    metadata: dict,
+    context: dict,
+):
+    try:
+        await create_auth_audit_log_bg(
+            action=action,
+            user_id=user_id,
+            metadata=metadata,
+            context=context,
+        )
+        
+    except Exception:
+        logger.exception("Auth audit log failed")
+
+
+
+
+# async scheduler function
+def run_background_task(coro):
+    try:
+        asyncio.create_task(coro)
+
+    except Exception:
+        logger.exception("Failed to schedule background task")
+
+
+
+
+
 # admin-role validation function
 def require_admin_role(*allowed_roles: str):
 
@@ -301,7 +332,6 @@ def require_admin_role(*allowed_roles: str):
         return current_user
 
     return checker
-
 
 
 

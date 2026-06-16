@@ -194,7 +194,7 @@ def set_auth_cookies(
     response: Response, 
     access_token: str = None, 
     refresh_token: str = None,
-    csrf_token: str = None
+    csrf_token: Optional[str] = None
 ):
     # access token logic
     if access_token:
