@@ -1,5 +1,6 @@
 # import dependencies
 from dotenv import load_dotenv
+import os
 
 # load environment variable
 load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
@@ -27,7 +28,7 @@ from app.cores.exceptions import (
     unhandled_exception_handler,
 )
 from app.cruds.platform import users
-from app.cruds.platform import global_admins, login
+from app.cruds.platform import global_admins, login, social_login
 from app.cruds.tenant import admin_router, members_router, tenant_router
 from sqlalchemy import event
 from sqlalchemy.orm import Session, Mapper
@@ -35,6 +36,7 @@ from sqlalchemy.orm import with_loader_criteria
 from app.utility.tenant.tenant_router import current_tenant_id, bypass_rls
 from guard import SecurityMiddleware
 from app.cores.security import security_config
+from starlette.middleware.sessions import SessionMiddleware
 
 
 
@@ -42,6 +44,11 @@ from app.cores.security import security_config
 
 # set up logging
 setup_logging()
+
+
+
+authlib_secret_key=os.getenv("AUTHLIB_SECRET_KEY")
+
 
 
 
@@ -53,6 +60,7 @@ def prevent_update(mapper, connection, target):
 @event.listens_for(AuditLog, "before_delete")
 def prevent_delete(mapper, connection, target):
     raise ValueError("Audit logs cannot be deleted")
+
 
 
 
@@ -133,13 +141,24 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
 
+
+
 # add middlewares
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=authlib_secret_key,
+    session_cookie="agentic_auth_session",
+    max_age=300,
+    same_site="lax",
+    https_only=False
+)
 app.add_middleware(TenantContextMiddleware)
 app.middleware(RequestIDMiddleware)
 app.add_middleware(CacheRequestBodyMiddleware)
 app.add_middleware(SecurityMiddleware, config=security_config)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CustomCORSMiddleware)
+
 
 
 
@@ -152,3 +171,4 @@ app.include_router(global_admins.router)
 app.include_router(admin_router.router)
 # app.include_router(members_router.router)
 app.include_router(tenant_router.router)
+app.include_router(social_login.router)

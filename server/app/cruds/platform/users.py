@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
 # initialize router
-router = APIRouter(tags=["users"])  
+router = APIRouter(prefix="/v1/users", tags=["users"])  
 
 
 

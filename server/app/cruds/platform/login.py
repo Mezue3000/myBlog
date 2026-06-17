@@ -15,7 +15,7 @@ from app.schemas.platform.users import TwoFAVerify
 
 
 # initialize router
-router = APIRouter(tags=["authenticate"])
+router = APIRouter(prefix="/v1/auth", tags=["authenticate"])
 
 
 

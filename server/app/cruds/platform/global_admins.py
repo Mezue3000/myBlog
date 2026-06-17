@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 # initialize router
 router = APIRouter(
-    prefix="/global_admin", 
+    prefix="/v1/global_admin", 
     tags=["global_admins"], 
     dependencies=[Depends(get_current_active_user)]
 )

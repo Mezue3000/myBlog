@@ -11,7 +11,7 @@ from app.utility.platform.auth import set_auth_cookies
 
 
 
-router = APIRouter(prefix="social_login/", tags=["Social_login"])
+router = APIRouter(prefix="/v1/social_login/", tags=["Social_login"])
 
 
 

@@ -196,8 +196,7 @@ class Tenant(SQLModel, table=True):
     )
     members: list["TenantMembership"] = Relationship(back_populates="tenant") 
     tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
-    api_keys: list["APIKey"] = Relationship(back_populates="tenant")
-    usage_logs: list["APIUsageLog"] = Relationship(back_populates="tenant")
+    projects: list["ApiProject"] = Relationship(back_populates="tenant")
     subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
     audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
     
@@ -243,7 +242,7 @@ class TenantMembership(TenantScopedMixin, SQLModel, table=True):
     
     # add unique constraint(one user per tenant)
     __table_args__ = (
-        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user"),
+        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user")
     )
 
 
@@ -278,6 +277,30 @@ class TenantInvitation(TenantScopedMixin, SQLModel, table=True):
 
 
 
+
+class ApiProject(SQLModel, table=True):
+    __tablename__ = "api_projects"
+
+    project_id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    name: str = Field(max_length=100, nullable=False)
+    description: Optional[str] = Field(default=None, max_length=500)
+    environment: str = Field(default="live", max_length=20)
+    # live, test, development
+
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = Field(default=None)
+
+    # create relationships
+    tenant: Tenant = Relationship(back_populates="projects")
+    api_keys: list["APIKey"] = Relationship(back_populates="project")
+    usage_logs: list["APIUsageLog"] = Relationship(back_populates="project")
+
+
+
+
+
 # create api-key model
 class APIKey(TenantScopedMixin, SQLModel, table=True):
     __tablename__ = "api_keys"
@@ -301,7 +324,9 @@ class APIKey(TenantScopedMixin, SQLModel, table=True):
     last_used_at: Optional[datetime] = Field(default=None)
 
     # create Relationships
-    tenant: "Tenant" = Relationship(back_populates="api_keys") 
+    project: ApiProject = Relationship(back_populates="api_keys")
+    usage_logs: list["APIUsageLog"] = Relationship(back_populates="api_key")
+     
 
 
 
@@ -324,7 +349,8 @@ class APIUsageLog(TenantScopedMixin, SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
     
     # create relationship
-    tenant: Optional[Tenant] = Relationship(back_populates="usage_logs")
+    project: ApiProject = Relationship(back_populates="usage_logs")
+    api_key: APIKey = Relationship(back_populates="usage_logs")
     
     
     
