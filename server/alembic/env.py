@@ -40,7 +40,7 @@ if config.config_file_name is not None:
 
 
 # import your models
-from app.models import RolePermission, Role, Permission, User, Tenant, TenantMembership, TenantInvitation, APIKey, APIUsageLog, Plan, Subscription, WebhookEvent, Post, Comment, AuditLog
+from app.models import RolePermission, Role, Permission, User, Tenant, TenantMembership, TenantInvitation, ApiProject, APIKey, APIUsageLog, Plan, Subscription, WebhookEvent, Post, Comment, AuditLog
 
 
 

@@ -1,5 +1,6 @@
 # import dependencies
 # from passlib.context import CryptContext
+from app.cores.logging import get_logger
 from pwdlib import PasswordHash
 import asyncio
 from fastapi import Request, Depends, Response, HTTPException, status, BackgroundTasks
@@ -9,7 +10,8 @@ from typing import Optional
 from app.utility.platform.database import async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.email import create_email_otp, send_verification_otp_email, verify_email_otp
-from app.cores.logging import get_logger
+from datetime import datetime, timedelta, timezone
+
 
 
 
@@ -351,3 +353,10 @@ require_moderator = require_admin_role(
     "global_admin",
     "moderator"
 )
+
+
+
+
+# function to calculate expiration time
+def get_default_expiration() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=30)

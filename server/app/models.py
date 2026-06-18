@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped
 import sqlalchemy as sa, future_uuid
 from sqlalchemy import ForeignKey
+from sqlalchemy.orm import declared_attr
 
 
 
@@ -55,8 +56,16 @@ class Permission(SQLModel, table=True):
 
 # tenant-scoped marker mixin
 class TenantScopedMixin:
-    pass
-    
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+
+    @declared_attr
+    def __table_args__(cls) -> tuple:
+        return (
+            sa.Index(f"ix_{cls.__tablename__}_tenant_id", "tenant_id"),
+        )
+
+
+
 
 
 
@@ -205,7 +214,7 @@ class Tenant(SQLModel, table=True):
     
     
 # create tenant-membership model
-class TenantMembership(TenantScopedMixin, SQLModel, table=True): 
+class TenantMembership(SQLModel, TenantScopedMixin, table=True): 
     __tablename__ = "tenant_memberships"
 
     membership_id: Optional[int] = Field(default=None, primary_key=True)
@@ -242,7 +251,8 @@ class TenantMembership(TenantScopedMixin, SQLModel, table=True):
     
     # add unique constraint(one user per tenant)
     __table_args__ = (
-        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user")
+        sa.Index("ix_tenant_memberships_tenant_id", "tenant_id"),
+        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user"),
     )
 
 
@@ -250,7 +260,7 @@ class TenantMembership(TenantScopedMixin, SQLModel, table=True):
 
 
 # create invitation model
-class TenantInvitation(TenantScopedMixin, SQLModel, table=True):
+class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "tenant_invitations"
 
     invite_id: Optional[int] = Field(default=None, primary_key=True)
@@ -278,19 +288,27 @@ class TenantInvitation(TenantScopedMixin, SQLModel, table=True):
 
 
 
-class ApiProject(SQLModel, table=True):
+# create api-project model
+class ApiProject(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "api_projects"
 
     project_id: Optional[int] = Field(default=None, primary_key=True)
-    tenant_id: int = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
-    name: str = Field(max_length=100, nullable=False)
+    
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    
+    name: str = Field(max_length=100, nullable=False, unique=True)
     description: Optional[str] = Field(default=None, max_length=500)
     environment: str = Field(default="live", max_length=20)
     # live, test, development
 
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda:datetime.now(timezone.utc), 
+        sa_column_kwargs={"server_default": func.now()},
+        nullable=False
+    )
+    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
 
     # create relationships
     tenant: Tenant = Relationship(back_populates="projects")
@@ -301,26 +319,32 @@ class ApiProject(SQLModel, table=True):
 
 
 
+# calculate timestamp expiration
+def get_default_expiration() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=30)
+
+
+
 # create api-key model
-class APIKey(TenantScopedMixin, SQLModel, table=True):
+class APIKey(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "api_keys"
 
     api_key_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    project_id: int = Field(foreign_key="api_projects.project_id", nullable=False, index=True)
     
     key_hash: str = Field(max_length=255, nullable=False, unique=True, index=True)
-    key_prefix: str = Field(max_length=20, nullable=False)
-    name: str = Field(default="default", max_length=100)
-    is_active: bool = Field(default=True)
+    key_prefix: str = Field(max_length=30, nullable=False)
+    name: str = Field(max_length=100, nullable=False)
+    is_revoked: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
         nullable=False
     )
 
-    expires_at: Optional[datetime] = Field(default=None)
+    expires_at: Optional[datetime] = Field(default_factory=get_default_expiration, nullable=True)
     last_used_at: Optional[datetime] = Field(default=None)
 
     # create Relationships
@@ -333,7 +357,7 @@ class APIKey(TenantScopedMixin, SQLModel, table=True):
 
 
 # create api-usage-log model
-class APIUsageLog(TenantScopedMixin, SQLModel, table=True):
+class APIUsageLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "api_usage_logs"
 
     log_id: Optional[int] = Field(default=None, primary_key=True)
@@ -376,7 +400,7 @@ class Plan(SQLModel, table=True):
     
     
 # create subscription model 
-class Subscription(TenantScopedMixin, SQLModel, table=True):
+class Subscription(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "subscriptions"
 
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
@@ -481,7 +505,7 @@ class Comment(SQLModel, table=True):
     
 
 # create audit-log model
-class AuditLog(TenantScopedMixin, SQLModel, table=True):
+class AuditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
@@ -532,6 +556,7 @@ User.model_rebuild()
 Tenant.model_rebuild()
 TenantMembership.model_rebuild()
 TenantInvitation.model_rebuild()
+ApiProject.model_rebuild()
 APIKey.model_rebuild()
 APIUsageLog.model_rebuild()
 Plan.model_rebuild()
