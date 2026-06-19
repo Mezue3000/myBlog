@@ -16,7 +16,7 @@ from app.schemas.platform.users import UserCreate
 
 
 # initialize router
-router = APIRouter(prefix="/TenantMembership-admin",  tags=["tenant-admins"])
+router = APIRouter(prefix="/v1/TenantMembership-admin",  tags=["tenant-admins"])
 
     
  
@@ -35,7 +35,7 @@ async def invite_members(
     if tenant_id != tenant.tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant mismatch detected",
+            detail="Tenant mismatch detected"
         )
 
     return await invite_members_service(
@@ -72,7 +72,7 @@ async def accept_invitation(
 async def register_invited_user(
     user: UserCreate,
     token: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await register_invited_member(
         user=user,
@@ -91,7 +91,7 @@ async def remove_member(
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     _: TenantMembership = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await delete_member_service(
         tenant=tenant,
@@ -111,7 +111,7 @@ async def deactivate_member(
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     _: TenantMembership = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await deactivate_member_service(
         tenant=tenant,
@@ -137,5 +137,5 @@ async def activate_member(
         tenant=tenant,
         member_id=member_id,
         current_user=current_user,
-        db=db,
+        db=db
     )

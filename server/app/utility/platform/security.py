@@ -353,10 +353,3 @@ require_moderator = require_admin_role(
     "global_admin",
     "moderator"
 )
-
-
-
-
-# function to calculate expiration time
-def get_default_expiration() -> datetime:
-    return datetime.now(timezone.utc) + timedelta(days=30)

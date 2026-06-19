@@ -28,7 +28,7 @@ async def get_paginated_users(
     is_deleted: Optional[bool],
     country: Optional[str],
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # validate access
     current_level = validate_admin_access(current_user)
@@ -92,7 +92,7 @@ async def admin_change_user(
     request: Request,
     user_data: UserUpdate,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # fetch target user
     target_user = await get_user_by_id_with_role(db, user_id)
@@ -136,7 +136,7 @@ async def admin_change_user(
         actor=current_user,
         target=target_user,
         action="UPDATE_USER",
-        changes=changes,
+        changes=changes
     )
 
     return target_user
@@ -150,7 +150,7 @@ async def admins_deactivate_user(
     user_id: int,
     request: Request,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # fetch target user
     target_user = await get_user_by_id_with_role(db, user_id)
@@ -188,7 +188,7 @@ async def admins_deactivate_user(
         target_user=target_user,
         action="DEACTIVATE_USER",
         changes=changes,
-        update_callback=lambda user: setattr(user, "is_active", False),
+        update_callback=lambda user: setattr(user, "is_active", False)
     )
 
     return {"detail": "User account deactivated successfully"}
@@ -254,7 +254,7 @@ async def admin_delete_user_account(
     user_id: int,
     request: Request,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # fetch user
     target_user = await get_user_by_id_with_role(db, user_id)
@@ -284,10 +284,7 @@ async def admin_delete_user_account(
 
     # define audit changes
     changes = {
-        "is_deleted": {
-            "old": False,
-            "new": True
-        }
+        "is_deleted": {"old": False, "new": True}
     }
 
     # persist + audit (transactional)
@@ -375,7 +372,7 @@ async def get_paginated_tenants(
     is_active: Optional[bool],
     is_deleted: Optional[bool],
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # validate access
     validate_admin_access(current_user)
@@ -455,7 +452,7 @@ async def admins_deactivate_tenant(
     tenant_id: UUID,
     request: Request,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # fetch target tenant
     target_tenant = await get_tenant_by_id(
@@ -496,11 +493,7 @@ async def admins_deactivate_tenant(
         tenant=target_tenant,
         action="DEACTIVATE_TENANT",
         changes=changes,
-        update_callback=lambda tenant: setattr(
-            tenant,
-            "is_active",
-            False,
-        ),
+        update_callback=lambda tenant: setattr(tenant, "is_active", False)
     )
 
     return {"detail": "Tenant deactivated successfully"}
@@ -515,12 +508,12 @@ async def admins_activate_tenant(
     tenant_id: UUID,
     request: Request,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     # fetch target tenant
     target_tenant = await get_tenant_by_id(
         db=db,
-        tenant_id=tenant_id,
+        tenant_id=tenant_id
     )
 
     # logging
@@ -535,7 +528,7 @@ async def admins_activate_tenant(
     # RBAC check
     verify_admin_ownership(
         resource_owner=target_tenant,
-        current_user=current_user,
+        current_user=current_user
     )
 
     # prevent redundant operation
@@ -543,7 +536,7 @@ async def admins_activate_tenant(
         target_tenant,
         field="is_active",
         expected=False,
-        error_message="Tenant is already active",
+        error_message="Tenant is already active"
     )
 
     # audit changes
@@ -556,13 +549,7 @@ async def admins_activate_tenant(
         tenant=target_tenant,
         action="ACTIVATE_TENANT",
         changes=changes,
-        update_callback=lambda tenant: setattr(
-            tenant,
-            "is_active",
-            True,
-        ),
+        update_callback=lambda tenant: setattr(tenant, "is_active", True)
     )
 
-    return {
-        "detail": "Tenant activated successfully"
-    }
+    return {"detail": "Tenant activated successfully"}

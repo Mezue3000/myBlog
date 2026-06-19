@@ -1,13 +1,11 @@
 # import dependencies
-# from __future__ import annotations
 from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON, Text
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, declared_attr
 import sqlalchemy as sa, future_uuid
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import declared_attr
 
 
 
@@ -54,9 +52,9 @@ class Permission(SQLModel, table=True):
 
 
 
-# tenant-scoped marker mixin
+# tenant-scoped auto-marker mixin
 class TenantScopedMixin:
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
 
     @declared_attr
     def __table_args__(cls) -> tuple:
@@ -133,8 +131,6 @@ class User(SQLModel, table=True):
             "foreign_keys": "[User.active_tenant_id]"
         }
     )
-    
-    posts: Mapped[list["Post"]] = Relationship(back_populates="user")
     
     # actions, this user performed
     performed_actions: list["AuditLog"] = Relationship(
@@ -338,6 +334,7 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
     key_prefix: str = Field(max_length=30, nullable=False)
     name: str = Field(max_length=100, nullable=False)
     is_revoked: bool = Field(default=False)
+    revoked_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
@@ -349,6 +346,11 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
 
     # create Relationships
     project: ApiProject = Relationship(back_populates="api_keys")
+    revoked_by_user: Optional["User"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[APIKey.revoked_by]"
+        }
+    )    
     usage_logs: list["APIUsageLog"] = Relationship(back_populates="api_key")
      
 
@@ -406,7 +408,7 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    owner_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
@@ -442,68 +444,10 @@ class WebhookEvent(SQLModel, table=True):
     processed_at: Optional[datetime] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
 
-
-
-
-
-# create post model
-class Post(SQLModel, table=True):
-    __tablename__ = "posts"
-    
-    post_id: Optional[int] = Field(default_factory=None, primary_key=True)
-    title: str = Field(max_length=125, nullable=False, index=True)
-    content: str = Field(max_length=450, nullable=False)
-    created_at: datetime = Field(
-        default_factory=lambda:datetime.now(timezone.utc), 
-        sa_column_kwargs={"server_default": func.now()},
-        nullable=False
-    )
-    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)  
-      
-    # add foreign key with cascade and restrict 
-    user_id: int = Field(
-        sa_column=sa.Column(
-            sa.Integer,
-            ForeignKey("users.user_id", onupdate="CASCADE", ondelete="RESTRICT"),  
-            index=True,
-            nullable=False
-        ),
-    )
-    
-    # create relationship
-    user: Mapped["User"] = Relationship(back_populates = "posts")
-    comments: Mapped[list["Comment"]] = Relationship(back_populates="post")
-    
-    # add fulltext index on title and comment columns 
-    __table_args__ = (
-        Index('post_title_idx', 'title', 'content', mysql_prefix='FULLTEXT'),
-        ) 
-    
-
-
-
-# create comment model
-class Comment(SQLModel, table=True):
-    __tablename__ = "comments"
-    
-    comment_id: Optional[int] = Field(default_factory=None, primary_key=True)
-    content: str = Field(max_length=225, index=True, nullable=False)
-    created_at: datetime = Field(
-        default_factory=lambda:datetime.now(timezone.utc), 
-        sa_column_kwargs={"server_default": func.now()},
-        nullable=False
-    ) 
-    
-    # add foreign key
-    post_id: int = Field(foreign_key="posts.post_id", index=True)
-    
-    # create relationship
-    post: Mapped["Post"] = Relationship(back_populates="comments")
     
     
     
     
-
 # create audit-log model
 class AuditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "audit_logs"
@@ -562,6 +506,4 @@ APIUsageLog.model_rebuild()
 Plan.model_rebuild()
 Subscription.model_rebuild()
 WebhookEvent.model_rebuild()
-Post.model_rebuild()
-Comment.model_rebuild()
 AuditLog.model_rebuild()

@@ -108,9 +108,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
 
         logger.exception(
             "Integrity error during registration",
-            extra={
-                "orig": str(e.orig),
-            }
+            extra={"orig": str(e.orig)}
         )
         
         raise HTTPException(
@@ -262,9 +260,7 @@ async def change_password(
             actor_id=current_user.user_id,
             target_user_id=current_user.user_id,
             action="UPDATE_PASSWORD",
-            changes={
-                "password": "[REDACTED]"
-            },
+            changes={"password": "[REDACTED]"},
             **context
         )
 
@@ -380,12 +376,7 @@ async def finalize_email_update(
             actor_id=current_user.user_id,
             target_user_id=current_user.user_id,
             action="UPDATE_EMAIL",
-            changes={
-                "email": {
-                    "old": old_email,
-                    "new": new_email
-                }
-            },
+            changes={"email": {"old": old_email, "new": new_email}},
             **context
         )
 
@@ -394,7 +385,10 @@ async def finalize_email_update(
         await db.refresh(current_user)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Integrity error while updating user.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Integrity error while updating user."
+        )
         
     return{"detail": "Email updated succesfully"} 
 
@@ -462,6 +456,7 @@ async def delete_user_account(
     try:
         current_user.is_deleted = True
         db.add(current_user)
+        
         await logout_all_devices_for_user(current_user.user_id)
         
          # extract metadata
@@ -472,12 +467,7 @@ async def delete_user_account(
             actor_id=current_user.user_id,
             target_user_id=current_user.user_id,
             action="DELETE_USER",
-            changes={
-                "is_deleted": {
-                    "old": False,
-                    "new": True
-                }
-            },
+            changes={"is_deleted": {"old": False, "new": True}},
             **context
         )
 
