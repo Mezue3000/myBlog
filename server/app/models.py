@@ -29,7 +29,7 @@ class Role(SQLModel, table=True):
     role_id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True, max_length=50)
 
-    # relationships
+    # create relationships
     users: list["User"] = Relationship(back_populates="role")
     permissions: list["Permission"] = Relationship(back_populates="roles", link_model=RolePermission)
 
@@ -45,7 +45,7 @@ class Permission(SQLModel, table=True):
     code: str = Field(index=True, unique=True, max_length=100)
     description: Optional[str] = Field(default=None, max_length=255)
     
-    # create relationships
+    # create relationship
     roles: list[Role] = Relationship(back_populates="permissions", link_model=RolePermission)
 
 
@@ -104,7 +104,7 @@ class User(SQLModel, table=True):
             index=True
     )   )
     
-    # create relationship
+    # create relationships
     role: Optional[Role] = Relationship(back_populates="users")
     
     tenant_memberships: list["TenantMembership"] = Relationship(
@@ -272,7 +272,7 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=48))
 
-    # create relationship
+    # create relationships
     tenant: "Tenant" = Relationship(back_populates="tenant_invitations")
     inviter: Optional["User"] = Relationship(
         sa_relationship_kwargs={
@@ -374,7 +374,7 @@ class APIUsageLog(SQLModel, TenantScopedMixin, table=True):
     response_time_ms: int = Field(default=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
     
-    # create relationship
+    # create relationships
     project: ApiProject = Relationship(back_populates="usage_logs")
     api_key: APIKey = Relationship(back_populates="usage_logs")
     
@@ -475,9 +475,8 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
 
-    # relationships
+    # create relationships
     tenant: "Tenant" = Relationship(back_populates="audit_logs")
-     
     actor: Optional["User"] = Relationship(
         back_populates="performed_actions",
         sa_relationship_kwargs={"foreign_keys": "[AuditLog.actor_id]"}

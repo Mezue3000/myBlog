@@ -1,6 +1,6 @@
 # import dependencies
 from app.cores.logging import get_logger
-from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
+from app.schemas.tenant.tenant_router import TenantCreate, TenantRead, TenantBrandingUpdate
 from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -118,7 +118,7 @@ async def get_tenants_service( current_user: User, db: AsyncSession):
 async def switch_tenant_service(
     tenant_id: UUID,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         tenant = await db.get(Tenant, tenant_id)
@@ -150,7 +150,7 @@ async def switch_tenant_service(
 
         return {
             "message": "Tenant switched successfully",
-            "active_tenant_id": tenant.tenant_id,
+            "active_tenant_id": tenant.tenant_id
         }
 
     except HTTPException:
@@ -176,20 +176,48 @@ async def switch_tenant_service(
     
     
     
-    
+
+# function to update tenant brand
+async def update_service_branding(
+    *,
+    db: AsyncSession,
+    tenant: Tenant,
+    data: TenantBrandingUpdate
+) -> Tenant:
+
+    update_data = data.model_dump(
+        exclude_unset=True,
+        exclude_none=True
+    )
+
+    for field, value in update_data.items():
+        setattr(tenant, field, value)
+
+    await db.flush()
+
+    logger.info(
+        "Tenant branding updated. "
+        f"tenant_id={tenant.tenant_id}"
+    )
+
+    return tenant
+
+
+
+
+
 # function to create background audit-log
 async def create_audit_log_bg(
     *,
     action: str,
     tenant_id: Optional[UUID] = None,
-    actor_user_id: Optional[UUID] = None,
-    target_user_id: Optional[UUID] = None,
+    actor_user_id: Optional[int] = None,
+    target_user_id: Optional[int] = None,
     resource_type: Optional[str] = None,
-    resource_id: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    resource_id: Optional[int] = None,
+    metadata: Optional[dict] = None
 ):
     async with AsyncSession(async_engine) as db:
-
         try:
             audit_log = AuditLog(
                 tenant_id=tenant_id,
@@ -198,29 +226,17 @@ async def create_audit_log_bg(
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                metadata=metadata or {},
+                metadata=metadata or {}
             )
 
             db.add(audit_log)
-
             await db.commit()
-
-            logger.info(
-                f"Audit log created: {action}"
-            )
+            logger.info(f"Audit log created: {action}")
 
         except SQLAlchemyError as e:
-
             await db.rollback()
-
-            logger.error(
-                f"Failed to create audit log: {str(e)}"
-            )
+            logger.error(f"Failed to create audit log: {str(e)}")
 
         except Exception as e:
-
             await db.rollback()
-
-            logger.exception(
-                f"Unexpected audit log error: {str(e)}"
-            )
+            logger.exception(f"Unexpected audit log error: {str(e)}")

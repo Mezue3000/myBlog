@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from app.cores.logging import get_logger
 from fastapi_limiter.depends import RateLimiter
 from math import ceil
-from typing import Annotated, Optional, Callable, Any
+from typing import Annotated, Optional, Callable, Any, Dict
 from sqlalchemy.orm import selectinload 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
@@ -338,7 +338,8 @@ def ensure_user_state(
         
         
         
-# **************Tenants Tenants  Tenants****************
+# **************Tenants Tenants  Tenants*******************
+
 # function to build tenant filters
 def build_tenant_filters(
     *,
@@ -431,49 +432,36 @@ async def fetch_tenants(
     filters: list,
     offset: int,
     limit: int
-):
-
+) -> list[Dict[str, Any]]:
     statement = (
         select(
             Tenant,
-            User.username.label("owner_name"),
-            User.email.label("owner_email"),
-            func.count(
-                TenantMembership.membership_id
-            ).label("member_count"),
-        )
-        .outerjoin(
-            User,
-            Tenant.owner_id == User.user_id,
+            func.count(TenantMembership.membership_id).label("member_count")
         )
         .outerjoin(
             TenantMembership,
-            (
-                TenantMembership.tenant_id
-                == Tenant.tenant_id
-            )
-            & (
-                TenantMembership.is_deleted.is_(False)
-            )
+            (TenantMembership.tenant_id == Tenant.tenant_id)
+            & (TenantMembership.is_deleted.is_(False))
         )
         .where(*filters)
-        .group_by(Tenant.tenant_id, User.user_id)
+        .options(selectinload(Tenant.owner))  
+        .group_by(Tenant.tenant_id)         
         .order_by(Tenant.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
 
     result = await db.exec(statement)
-    rows = result.all()
+    rows = result.all()  
 
     return [
         {
             "tenant": tenant,
-            "owner_name": owner_name,
-            "owner_email": owner_email,
+            "owner_name": tenant.owner.username if tenant.owner else None,
+            "owner_email": tenant.owner.email if tenant.owner else None,
             "member_count": member_count
         }
-        for tenant, owner_name, owner_email, member_count in rows
+        for tenant, member_count in rows
     ]
 
 
@@ -483,7 +471,7 @@ async def fetch_tenants(
 # function to get tenant by id
 async def get_tenant_by_id(
     db: AsyncSession,
-    tenant_id: UUID,
+    tenant_id: UUID
 ) -> Tenant:
 
     tenant = await db.get(
@@ -509,7 +497,7 @@ def ensure_tenant_state(
     *,
     field: str,
     expected: bool,
-    error_message: str,
+    error_message: str
 ):
     if getattr(tenant, field) != expected:
         raise HTTPException(
@@ -530,7 +518,7 @@ async def create_audit_log(
     entity_type: str,
     entity_id: str,
     changes: dict | None,
-    request: Request,
+    request: Request
 ) -> AuditLog:
 
     audit_log = AuditLog(
@@ -541,10 +529,8 @@ async def create_audit_log(
         ip_address=request.client.host
         if request.client
         else None,
-        user_agent=request.headers.get(
-            "user-agent"
-        ),
-        changes=changes,
+        user_agent=request.headers.get("user-agent"),
+        changes=changes
     )
 
     db.add(audit_log)

@@ -5,7 +5,6 @@ import os
 # load environment variable
 load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
 
-
 from app.cores.logging import setup_logging
 from contextlib import asynccontextmanager
 from guard.lifespan import guard_lifespan
@@ -22,14 +21,16 @@ from app.cores.middleware import(
     CustomCORSMiddleware,
     TenantContextMiddleware
 )
+
 from app.cores.exceptions import (
     http_exception_handler,
-    starlette_http_exception_handler,
-    unhandled_exception_handler,
+    unhandled_exception_handler
 )
+
 from app.cruds.platform import users
 from app.cruds.platform import global_admins, login, social_login
 from app.cruds.tenant import admin_router, members_router, tenant_router
+from app.cruds.api_project import api 
 from sqlalchemy import event
 from sqlalchemy.orm import Session, Mapper
 from sqlalchemy.orm import with_loader_criteria
@@ -136,9 +137,7 @@ app = FastAPI(lifespan=lifespan)
 
 # add global exception handlers
 app.add_exception_handler(HTTPException, http_exception_handler)
-app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
-
 
 
 
@@ -169,6 +168,7 @@ app.include_router(login.router)
 app.include_router(users.router)
 app.include_router(global_admins.router) 
 app.include_router(admin_router.router)
-# app.include_router(members_router.router)
+app.include_router(members_router.router)
 app.include_router(tenant_router.router)
 app.include_router(social_login.router)
+app.include_router(api.router)

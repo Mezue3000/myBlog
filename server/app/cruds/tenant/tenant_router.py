@@ -1,13 +1,13 @@
 # import dependencies
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_limiter.depends import RateLimiter
 from app.utility.platform.security import get_identifier
-from app.schemas.tenant.tenant_router import TenantCreate, TenantRead
+from app.schemas.tenant.tenant_router import TenantCreate, TenantRead, TenantBrandingRead, TenantBrandingUpdate
 from app.models import User, Tenant, TenantMembership
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.utility.platform.user import get_current_active_user
-from app.services.tenant.tenant_router import create_team_service, get_tenants_service, switch_tenant_service
+from app.services.tenant.tenant_router import create_team_service, get_tenants_service, switch_tenant_service, update_service_branding
 from app.services.tenant.admin_router import get_current_tenant, delete_tenant_service
 from uuid import UUID
 from app.utility.tenant.admin_router import require_owner 
@@ -77,6 +77,41 @@ async def switch_tenant(
         current_user=current_user,
         db=db
     )
+
+
+
+
+
+# endpoint to update tenant brand
+@router.patch(
+    "/tenant/branding",
+    response_model=TenantBrandingRead
+)
+async def update_tenant_brand(
+    data: TenantBrandingUpdate,
+    current_tenant: Tenant = Depends(get_current_tenant),
+    _: TenantMembership = Depends(require_owner),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        tenant = await update_service_branding(
+            db=db,
+            tenant=current_tenant,
+            data=data
+        )
+
+        await db.commit()
+        await db.refresh(tenant)
+
+        return tenant
+
+    except Exception:
+        await db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update tenant branding"
+        )
 
 
 

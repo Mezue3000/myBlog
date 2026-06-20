@@ -16,7 +16,7 @@ from app.schemas.platform.users import UserCreate
 
 
 # initialize router
-router = APIRouter(prefix="/v1/TenantMembership-admin",  tags=["tenant-admins"])
+router = APIRouter(prefix="/v1/Tenant-admin",  tags=["tenant-admins"])
 
     
  
@@ -43,40 +43,6 @@ async def invite_members(
         emails=data.emails,
         current_user=current_user,
         background_tasks=background_tasks,
-        db=db
-    )
-
-
-
-
-
-# endpoint to accept iv
-@router.post("/invitations/accept")
-async def accept_invitation(
-    data: AcceptInvitationRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    return await accept_invitation_service(
-        token=data.token,
-        current_user=current_user,
-        db=db
-    )
-
-
-
-
-
-# endpoint to register invited member
-@router.post("/auth/register/invited")
-async def register_invited_user(
-    user: UserCreate,
-    token: str,
-    db: AsyncSession = Depends(get_db)
-):
-    return await register_invited_member(
-        user=user,
-        token=token,
         db=db
     )
     
@@ -139,3 +105,4 @@ async def activate_member(
         current_user=current_user,
         db=db
     )
+    

@@ -1,3 +1,4 @@
+# import dependencies
 from dotenv import load_dotenv
 import os
 from redis.asyncio import Redis
@@ -36,5 +37,5 @@ redis_client = Redis(
     socket_timeout=15,
     socket_connect_timeout=15,
     retry_on_timeout=True,
-    health_check_interval=30,               
+    health_check_interval=30             
 )
