@@ -19,7 +19,8 @@ from app.cores.middleware import(
     CacheRequestBodyMiddleware, 
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
-    TenantContextMiddleware
+    TenantContextMiddleware,
+    IdempotencyMiddleware
 )
 
 from app.cores.exceptions import (
@@ -152,11 +153,12 @@ app.add_middleware(
     https_only=False
 )
 app.add_middleware(TenantContextMiddleware)
-app.middleware(RequestIDMiddleware)
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(CacheRequestBodyMiddleware)
 app.add_middleware(SecurityMiddleware, config=security_config)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CustomCORSMiddleware)
+app.add_middleware(IdempotencyMiddleware)
 
 
 

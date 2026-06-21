@@ -1,10 +1,18 @@
 # import dependencies
-from fastapi import Request, Response
+from app.cores.logging import get_logger
+from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 import json, uuid
 from fastapi.middleware.cors import CORSMiddleware
 from app.utility.tenant.tenant_router import current_tenant_id
+from app.cores.redis import redis_client
 
+
+
+
+
+# initialize logging
+logger = get_logger(__name__)
 
 
 
@@ -22,6 +30,7 @@ class CacheRequestBodyMiddleware(BaseHTTPMiddleware):
             pass
         response = await call_next(request)
         return response
+    
     
     
     
@@ -76,6 +85,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 
+
 # cors middleware class
 class CustomCORSMiddleware(CORSMiddleware):
     def __init__(self, app, **kwargs):
@@ -103,6 +113,7 @@ class CustomCORSMiddleware(CORSMiddleware):
 
 
 
+
 # debug lifesaver middleware for logging
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -115,6 +126,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # append it back to the client headers for logging parity
         response.headers["X-Request-ID"] = request_id
         return response
+
+
 
 
 
@@ -143,8 +156,131 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
 
 
+MAX_CACHE_SIZE = 100 * 1024
 
 
+# idempotency middleware
+class IdempotencyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next
+    ):
+        # skip unsupported methods
+        if request.method not in {"POST", "PUT", "PATCH"}:
+            return await call_next(request)
+
+        idempotency_key = request.headers.get("Idempotency-Key")
+
+        if not idempotency_key:
+            return await call_next(request)
+
+        # build scoped cache key
+        tenant_id = request.headers.get("X-Tenant-ID", "anonymous")
+
+        cache_key = (
+            f"idemp:"
+            f"{tenant_id}:"
+            f"{request.method}:"
+            f"{request.url.path}:"
+            f"{idempotency_key}"
+        )
+
+        processing_token = (f"PROCESSING:{uuid.uuid4().hex}")
+
+        # try to acquire lock
+        is_new_request = await redis_client.set(
+            cache_key,
+            processing_token,
+            ex=120,
+            nx=True
+        )
+
+        # existing key found
+        if not is_new_request:
+            cached_data = await redis_client.get(cache_key)
+
+            if not cached_data:
+                return await call_next(request)
+
+            cached_data = cached_data.decode()
+
+            if cached_data.startswith("PROCESSING:"):
+                return Response(
+                    content=json.dumps(
+                        {
+                            "detail":
+                            "Duplicate request is currently processing"
+                        }
+                    ),
+                    media_type="application/json",
+                    status_code=status.HTTP_409_CONFLICT
+                )
+
+            cached_response = json.loads(cached_data)
+
+            return Response(
+                content=cached_response["body"],
+                status_code=cached_response["status_code"],
+                headers=cached_response.get("headers", {},),
+                media_type="application/json"
+            )
+
+        # execute request
+        try:
+            response = await call_next(request)
+
+            response_body = b""
+
+            async for chunk in response.body_iterator:
+                response_body += chunk
+
+            # only cache successful responses
+            if (
+                response.status_code < 400
+                and len(response_body)
+                <= MAX_CACHE_SIZE
+            ):
+
+                payload = {
+                    "status_code":
+                        response.status_code,
+
+                    "headers":
+                        dict(response.headers),
+
+                    "body":
+                        response_body.decode("utf-8", errors="ignore")
+                }
+
+                await redis_client.setex(
+                    cache_key,
+                    86400,
+                    json.dumps(payload)
+                )
+
+            else:
+                # remove processing lock
+                await redis_client.delete(cache_key)
+
+            return Response(
+                content=response_body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type
+            )
+
+        except Exception:
+            # release lock so client can retry
+            await redis_client.delete(cache_key)
+            logger.exception("Idempotency middleware error")
+
+            raise 
+        
+        
+        
+        
+        
 
 
 # "geolocation=(); "           # No location
