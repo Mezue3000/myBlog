@@ -12,8 +12,8 @@ from pydantic import ConfigDict
 # create project schema
 class ApiProjectCreate(SQLModel):
     name: str = Field(max_length=100)
+    project_name: str  
     description: Optional[str] = Field(default=None, max_length=500)
-    environment: str = Field(default="live", max_length=20)
     
     
     
@@ -61,4 +61,3 @@ class APIUsageLogRead(SQLModel):
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
-    

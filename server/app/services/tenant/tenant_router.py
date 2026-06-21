@@ -2,6 +2,7 @@
 from app.cores.logging import get_logger
 from app.schemas.tenant.tenant_router import TenantCreate, TenantRead, TenantBrandingUpdate
 from fastapi import HTTPException, status
+from sqlmodel import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Tenant, TenantMembership, AuditLog
@@ -42,7 +43,6 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         )
 
         db.add(tenant)
-        
         await db.flush()
 
         # owner membership
@@ -53,15 +53,12 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         )
 
         db.add(membership)
-
         await db.commit()
         await db.refresh(tenant)
         await db.refresh(membership)
-
         logger.info(f"Tenant created with id={tenant.tenant_id}")
 
         return tenant
-    
     
     except HTTPException:
         raise
@@ -121,19 +118,26 @@ async def switch_tenant_service(
     db: AsyncSession
 ):
     try:
-        tenant = await db.get(Tenant, tenant_id)
+        statement = select(Tenant).where(
+            Tenant.tenant_id == tenant_id,
+            Tenant.is_active == True,
+            Tenant.is_deleted == False
+        )
+
+        result = await db.exec(statement)
+        tenant = result.first()
 
         if not tenant:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tenant not found",
+                detail="Tenant not found"
             )
 
         # validate access
         await validate_tenant_access(
             tenant=tenant,
             current_user=current_user,
-            db=db,
+            db=db
         )
 
         # save active tenant

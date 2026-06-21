@@ -16,7 +16,7 @@ from app.utility.tenant.admin_router import require_owner
 
 
 # initialize router
-router = APIRouter(tags=["tenants"])
+router = APIRouter(prefix="/v1/Tenant",  tags=["tenant-router"])
 
 
 
@@ -30,7 +30,7 @@ router = APIRouter(tags=["tenants"])
 async def create_team_workspace(
     data: TenantCreate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     tenant = await create_team_service(
         data=data,

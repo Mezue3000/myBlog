@@ -62,7 +62,7 @@ class TenantScopedMixin:
             sa.Index(f"ix_{cls.__tablename__}_tenant_id", "tenant_id"),
         )
 
-
+ 
 
 
 
@@ -291,7 +291,7 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     project_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True, unique=True)
     
     name: str = Field(max_length=100, nullable=False, unique=True)
     description: Optional[str] = Field(default=None, max_length=500)

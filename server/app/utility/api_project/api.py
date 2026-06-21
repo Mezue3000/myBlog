@@ -74,3 +74,28 @@ async def get_current_project(
         )
 
     return project
+
+
+
+
+
+# function to validate project uniqueness
+async def validate_project_uniqueness(
+    *,
+    tenant_id: UUID,
+    project_name: str,
+    db: AsyncSession
+):
+    statement = select(ApiProject).where(
+        ApiProject.tenant_id == tenant_id,
+        ApiProject.name == project_name
+    )
+
+    result = await db.exec(statement)
+    project = result.first()
+
+    if project:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project already exists"
+        )

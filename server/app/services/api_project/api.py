@@ -1,11 +1,14 @@
 # import dependencies
 from app.cores.logging import get_logger
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import Tenant, ApiProject, APIKey, APIUsageLog
+from app.models import User, Tenant, TenantMembership, ApiProject, APIKey, APIUsageLog
 from app.schemas.api_project.api import ApiProjectCreate, ApiKeyCreate, ApiKeyRead, APIUsageLogRead
+from app.utility.tenant.tenant_router import validate_tenant_uniqueness
 from sqlmodel import select
 from fastapi import HTTPException, status
-from app.utility.api_project.api import generate_api_key, hash_api_key, get_project_by_tenant
+from sqlalchemy.exc import SQLAlchemyError
+from app.utility.api_project.api import generate_api_key, hash_api_key, get_project_by_tenant, validate_project_uniqueness
+from app.utility.platform.user import slugify
 from typing import Optional
 from sqlalchemy.orm import selectinload
 from uuid import UUID
@@ -19,53 +22,91 @@ logger = get_logger(__name__)
 
 
 # service fuction to create api project
-async def create_service_project(
+async def create_headless_api_service(
     *,
-    db: AsyncSession,
-    tenant: Tenant,
-    data: ApiProjectCreate
-) -> ApiProject:
+    data: ApiProjectCreate,
+    current_user: User,
+    db: AsyncSession
+):
     try:
-        statement = select(ApiProject).where(
-            ApiProject.tenant_id == tenant.tenant_id,
-            ApiProject.name == data.name
+        logger.info(f"Creating API workspace: {data.name}")
+
+        # validate tenant uniqueness
+        await validate_tenant_uniqueness(name=data.name, db=db)
+        
+        # generate slug
+        slug = slugify(data.name, db)
+
+        # create tenant
+        tenant = Tenant(
+            name=data.name,
+            type="headless_api",
+            slug=slug
         )
 
-        result = await db.exec(statement)
-        existing_project = result.first()
-
-        if existing_project:
-            raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Project already exists"
+        db.add(tenant)
+        await db.flush()
+        
+        # owner membership
+        membership = TenantMembership(
+            user_id=current_user.user_id,
+            tenant_id=tenant.tenant_id,
+            role="owner"
         )
-            
+
+        db.add(membership)
+        await db.flush()
+        
+        # validate project uniqueness
+        await validate_project_uniqueness(
+            tenant_id=tenant.tenant_id,
+            project_name=data.project_name,
+            db=db
+        )
+
+        # create first project
         project = ApiProject(
             tenant_id=tenant.tenant_id,
-            name=data.name,
-            description=data.description,
-            environment=data.environment
+            name=data.project_name,
+            description=data.description
         )
-
+        
         db.add(project)
-        await db.flush()
+        await db.commit()
+
+        await db.refresh(tenant)
+        await db.refresh(membership)
+        await db.refresh(project)
 
         logger.info(
-            "Project created successfully. "
-            f"project_id={project.project_id}, "
-            f"tenant_id={tenant.tenant_id}"
+            "API workspace created successfully. "
+            f"tenant_id={tenant.tenant_id}, "
+            f"project_id={project.project_id}"
         )
 
-        return project
+        return {
+            "tenant": tenant,
+            "project": project
+        }
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Database error creating API workspace: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error"
+        )
 
     except Exception as e:
         await db.rollback()
-        logger.exception(
-            "Project creation failed. "
-            f"tenant_id={tenant.tenant_id}, "
-            f"error={str(e)}"
+        logger.error(f"Unexpected error creating API workspace: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong"
         )
-        raise
     
     
     
