@@ -104,7 +104,11 @@ expired_token_error = HTTPException(
     headers = {"WWW-Authenticate": "Bearer"})
     
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(
+    request: Request,
+    token: str = Depends(oauth2_scheme), 
+    db: AsyncSession = Depends(get_db)
+):
     try:
         payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
         
@@ -133,6 +137,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     if not user or user.is_deleted:
         raise credential_exception
+    
+    request.state.current_user = user
+    request.state.user_id = user.user_id
+    
     return user 
  
 
@@ -249,3 +257,10 @@ def validate_2fa_user(user: User):
 # refactor name-fields
 def slugify(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
+
+
+
+
+# normalization function
+def normalize_identifier(identifier: str) -> str:
+    return identifier.strip().lower()

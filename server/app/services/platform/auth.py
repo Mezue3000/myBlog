@@ -1,9 +1,11 @@
 # import dependencies
 from app.cores.logging import get_logger
-from fastapi import BackgroundTasks, Response, Request
+from fastapi import BackgroundTasks, Response, Request, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
+from app.rate_limit.lock import ensure_login_not_locked, record_failed_login, handle_failed_login, clear_login_failures
 from app.utility.platform.user import get_user_by_identifier, validate_user_credentials, get_user_by_email, validate_2fa_user
+from app.utility.platform.user import normalize_identifier
 from app.utility.platform.security import validate_password, build_audit_context, create_auth_audit_log_bg, verify_email_otp
 from app.utility.platform.auth import is_trusted_device, handle_trusted_device_login, handle_2fa_challenge, handle_remember_device, set_auth_cookies, generate_auth_tokens, extract_refresh_token, rotate_refresh_token, get_refresh_token_payload, create_access_token
 from app.schemas.platform.users import TwoFAVerify
@@ -18,6 +20,14 @@ logger = get_logger(__name__)
 
 
 
+# define exception
+invalid_credentials_exception = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Invalid email/username or password."
+)
+
+
+
 
 # login function
 async def authenticate_users(
@@ -28,17 +38,30 @@ async def authenticate_users(
     db: AsyncSession 
 ):
     # OAuth2PasswordRequestForm uses "username" for both email and username  
-    login_identifier = form_data.username.lower().strip()
+    login_identifier = normalize_identifier(form_data.username)
     password = form_data.password
-
+    
+    # check whether login is temporarily locked
+    await ensure_login_not_locked(login_identifier)
+    
     # fetch user
     user = await get_user_by_identifier(db, login_identifier)
-
+    
+    # user not found
+    if user is None:
+        await handle_failed_login(login_identifier, invalid_credentials_exception)
+    
     # validate user
     validate_user_credentials(user)
     
     # validate password
-    await validate_password(password, user.password_hash)
+    try:
+        await validate_password(password, user.password_hash)
+    except HTTPException as exc:
+        await handle_failed_login(login_identifier, invalid_credentials_exception)
+  
+    # successful login
+    await clear_login_failures(login_identifier)
 
     # check trusted device (2FA bypass)
     trusted_device = request.cookies.get("trusted_device")
@@ -58,12 +81,10 @@ async def authenticate_users(
         return await handle_trusted_device_login(user, response)
 
     # handle 2FA challenge
-    return await handle_2fa_challenge(
-        user=user,
-        background_tasks=background_tasks
-    )
+    return await handle_2fa_challenge(user=user, background_tasks=background_tasks)
     
     
+
 
 
 # function to verify 2fa authentiction 
@@ -118,6 +139,7 @@ async def confirm_2fa(
         "type": tenant.type, 
         "token_type": "bearer"
     }
+    
     
     
     

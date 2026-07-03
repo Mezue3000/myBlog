@@ -1,13 +1,15 @@
 # import necessary dependencies
 from fastapi import APIRouter, Depends, Request, Response, BackgroundTasks
-from fastapi_limiter.depends import RateLimiter
+from app.rate_limit.dependencies import attach_identifier
+from app.rate_limit.limiter import limiter
+from app.rate_limit.policy import AUTH_LIMITS
+from app.rate_limit.keys import email_username_key_func
 from app.schemas.platform.jwts import Token
 from typing import Union
 from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession 
 from app.utility.platform.database import get_db 
-from app.utility.platform.security import get_identifier
 from app.services.platform.auth import authenticate_users, confirm_2fa, refresh_session_token
 from app.schemas.platform.users import TwoFAVerify 
 
@@ -21,12 +23,10 @@ router = APIRouter(prefix="/v1/auth", tags=["authenticate"])
 
 
 # create an endpoint to sign_in and grab token
-@router.post(
-    "/token", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=15, identifier=get_identifier))], 
-    response_model=Union[Token, TwoFAChallenge]
-)
+@router.post("/token", dependencies=[Depends(attach_identifier)], response_model=Union[Token, TwoFAChallenge])
 
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["login"], key_func=email_username_key_func)
 async def login(
     request: Request,
     response: Response,
@@ -46,11 +46,10 @@ async def login(
 
 
 # endpoint for 2FA verification
-@router.post(
-    "/2fa/verify",
-    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))]
-)
+@router.post("/2fa/verify", dependencies=[Depends(attach_identifier)])
 
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["login"], key_func=email_username_key_func)
 async def verify_2fa(
     request: Request,
     response: Response,

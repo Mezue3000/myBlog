@@ -9,10 +9,13 @@ from app.cores.logging import setup_logging
 from contextlib import asynccontextmanager
 from guard.lifespan import guard_lifespan
 from fastapi import FastAPI, HTTPException
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from app.rate_limit.limiter import limiter
 from app.models import AuditLog, TenantScopedMixin
 from sqlalchemy import event 
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi_limiter import FastAPILimiter
 from app.cores.redis import redis_client
 from app.cores.middleware import(
     RequestIDMiddleware,
@@ -112,21 +115,14 @@ def set_tenant_id(session, flush_context, instances):
     
     
     
-# add rate-limit
+# application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # nest inside the fastapi-guard
     async with guard_lifespan(app):
-        
-        # initialize rate limiter sharing the redis connection instance
-        await FastAPILimiter.init(redis_client)
-        
-        try:
-            yield
-        finally:
-            # close connection pools on server shutdown signals
-            if redis_client:
-                await redis_client.close()
+        yield
+
+    # close Redis connection pool
+    await redis_client.close()
         
         
         
@@ -136,14 +132,25 @@ app = FastAPI(lifespan=lifespan)
 
 
 
+app.state.limiter = limiter
+
+
+
 # add global exception handlers
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 
 
 # add middlewares
+app.add_middleware(CustomCORSMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityMiddleware, config=security_config)
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(CacheRequestBodyMiddleware)
+app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(
     SessionMiddleware, 
     secret_key=authlib_secret_key,
@@ -153,13 +160,7 @@ app.add_middleware(
     https_only=False
 )
 app.add_middleware(TenantContextMiddleware)
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(CacheRequestBodyMiddleware)
-app.add_middleware(SecurityMiddleware, config=security_config)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(CustomCORSMiddleware)
-app.add_middleware(IdempotencyMiddleware)
-
+app.add_middleware(SlowAPIMiddleware)
 
 
 

@@ -296,7 +296,6 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     name: str = Field(max_length=100, nullable=False, unique=True)
     description: Optional[str] = Field(default=None, max_length=500)
     environment: str = Field(default="live", max_length=20)
-    # live, test, development
 
     is_active: bool = Field(default=True)
     created_at: datetime = Field(
@@ -310,7 +309,7 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     tenant: Tenant = Relationship(back_populates="projects")
     api_keys: list["APIKey"] = Relationship(back_populates="project")
     usage_logs: list["APIUsageLog"] = Relationship(back_populates="project")
-
+ 
 
 
 

@@ -1,5 +1,8 @@
 # import dependencies
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from app.rate_limit.limiter import limiter
+from app.rate_limit.policy import TENANT_LIMITS
+from app.rate_limit.keys import tenant_key_func
 from uuid import UUID
 from app.schemas.tenant.admin_router import InviteMembersRequest, AcceptInvitationRequest
 from app.models import Tenant, User, TenantMembership
@@ -22,6 +25,8 @@ router = APIRouter(prefix="/v1/Tenant-admin",  tags=["tenant-admins"])
  
 # endpoint for member invitation
 @router.post("/tenants/{tenant_id}/invitations")
+
+@limiter.limit(TENANT_LIMITS["admin_iv"], key_func=tenant_key_func)
 async def invite_members(
     tenant_id: UUID,
     data: InviteMembersRequest,
@@ -52,6 +57,8 @@ async def invite_members(
     
 # soft-delete member endpoint
 @router.delete("/members/{member_id}")
+
+@limiter.limit(TENANT_LIMITS["admin_delete"], key_func=tenant_key_func)
 async def remove_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
@@ -72,6 +79,8 @@ async def remove_member(
     
 # endpoint to deactivate member
 @router.patch("/{member_id}/deactivate", status_code=status.HTTP_200_OK)
+
+@limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def deactivate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
@@ -92,6 +101,8 @@ async def deactivate_member(
     
 # endpoint to activate member
 @router.patch("/{member_id}/activate", status_code=status.HTTP_200_OK)
+
+@limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def activate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
@@ -105,4 +116,3 @@ async def activate_member(
         current_user=current_user,
         db=db
     )
-    

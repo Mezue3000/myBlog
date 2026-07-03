@@ -39,7 +39,7 @@ security_config = SecurityConfig(
 
     # active automated ip banning
     auto_ban_threshold=5,
-    auto_ban_duration=86400,  # 1 day
+    auto_ban_duration=86400,
 
     # explicitly deactivate rate-limiting features
     enable_rate_limiting=False,

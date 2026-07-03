@@ -1,5 +1,4 @@
 # import dependencies
-# from passlib.context import CryptContext
 from app.cores.logging import get_logger
 from pwdlib import PasswordHash
 import asyncio
@@ -24,8 +23,6 @@ logger = get_logger(__name__)
 
 # initialize hash function
 password_hash = PasswordHash.recommended()
-# pwd_context = CryptContext(schemes=["argon2"], default="argon2")
-
 
 
 
@@ -50,44 +47,6 @@ async def verify_password(plain_password: str, hashed_password: str) -> bool:
 #     asyncio.run(verify_password("monday345", hasy))
 #     print(hasy)
 
-
-
-
-
-# key function to identify users by email/username and ip-address(rate-limiter)
-async def get_identifier(request: Request) -> str:
-    body_data = getattr(request.state, "body_data", {}) or {}
-    
-    prefix = request.client.host or "unknown_ip"
-    
-    if email := body_data.get("email"):
-        return f"{prefix}:{email}"
-    
-    if username := body_data.get("username"):
-        return f"{prefix}:{username}"
-    
-    return prefix
-
-
-
-
-# key function to identify authenticated users by id(rate-limiter)
-def get_identifier_factory(action: str):
-    async def identifier(request: Request, user: User = Depends(get_current_active_user)) -> str:
-        if user:
-            return f"user:{user.user_id}:{action}"
-        
-        # fallback for unauthenticated requests
-        ip = request.headers.get("x-forwarded-for")
-        
-        if ip:
-            ip = ip.split(",")[0].strip()
-        else:
-            ip = request.client.host or "unknown"
-            
-        return f"ip:{ip}:{action}"
-    
-    return identifier
 
 
 

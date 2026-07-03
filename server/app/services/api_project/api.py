@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 async def create_headless_api_service(
     *,
     data: ApiProjectCreate,
-    current_user: User,
+    current_tenant: Tenant,
     db: AsyncSession
 ):
     try:
@@ -47,16 +47,6 @@ async def create_headless_api_service(
         db.add(tenant)
         await db.flush()
         
-        # owner membership
-        membership = TenantMembership(
-            user_id=current_user.user_id,
-            tenant_id=tenant.tenant_id,
-            role="owner"
-        )
-
-        db.add(membership)
-        await db.flush()
-        
         # validate project uniqueness
         await validate_project_uniqueness(
             tenant_id=tenant.tenant_id,
@@ -75,7 +65,6 @@ async def create_headless_api_service(
         await db.commit()
 
         await db.refresh(tenant)
-        await db.refresh(membership)
         await db.refresh(project)
 
         logger.info(
@@ -84,10 +73,7 @@ async def create_headless_api_service(
             f"project_id={project.project_id}"
         )
 
-        return {
-            "tenant": tenant,
-            "project": project
-        }
+        return {"tenant": tenant, "project": project}
 
     except HTTPException:
         raise
@@ -174,7 +160,7 @@ async def get_tenant_api_keys(
     
     # Optional project filter
     if project_id:
-        # Keep your tenant authorization check intact
+        # Keep tenant authorization check intact
         await get_project_by_tenant(
             db=db,
             tenant_id=tenant_id,
@@ -196,7 +182,7 @@ async def get_tenant_api_keys(
     # build response schemas cleanly via dot notation
     return [
         ApiKeyRead(
-            api_key_id=api_key.key_id,  # Maps cleanly to your key identifier
+            api_key_id=api_key.key_id,
             project_id=api_key.project_id,
             project_name=api_key.project.name if api_key.project else "Unknown Project",
             name=api_key.name,

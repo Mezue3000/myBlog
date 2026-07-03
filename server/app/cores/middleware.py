@@ -56,9 +56,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # Images — very permissive 
             "img-src 'self' data: blob: https:; "
     
-            # Connect external services
+            # Connect external services(add Stripe)
             "connect-src 'self' https://api.resend.com "
-            "https://*.sentry.io wss:; "  # add Stripe
+            "https://*.sentry.io wss:; "
     
             # Media
             "media-src 'self'; "

@@ -1,11 +1,13 @@
 # import dependencies
 from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
-from fastapi_limiter.depends import RateLimiter
 from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, PasswordResetConfirm
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.models import User
-from app.utility.platform.security import get_identifier_factory, get_identifier
+from app.rate_limit.dependencies import attach_email
+from app.rate_limit.limiter import limiter
+from app.rate_limit.policy import AUTH_LIMITS
+from app.rate_limit.keys import email_key_func, user_key_func
 from app.services.platform.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices 
 from app.utility.platform.user import get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -19,11 +21,10 @@ router = APIRouter(prefix="/v1/users", tags=["users"])
 
 
 # create endpoint to start user registration by verifying email
-@router.post(
-    "/start_registration",
-    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier))]
-)
+@router.post("/start_registration", dependencies=[Depends(attach_email)])
 
+@limiter.limit(AUTH_LIMITS["ip"])      
+@limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def start_registration(
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
@@ -35,8 +36,10 @@ async def start_registration(
 
  
 # create endpoint to complete user registration
-@router.post("/complete_registration", response_model=UserRead)
+@router.post("/complete_registration", dependencies=[Depends(attach_email)], response_model=UserRead)
 
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSession = Depends(get_db)):
     return await finalize_registration(user=user, otp_code=otp_code, db=db)
 
@@ -60,12 +63,9 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
   
   
 # create user update endpoint
-@router.patch(
-    "/update_user", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_user")))],
-    response_model=UserUpdateRead
-)
+@router.patch("/update_user", response_model=UserUpdateRead)
 
+@limiter.limit(AUTH_LIMITS["update_user"], key_func=user_key_func)
 async def update_user(
     user_data: UserUpdate, 
     current_user: User = Depends(get_current_user),
@@ -77,16 +77,9 @@ async def update_user(
 
 
 # create endpoint to change user password
-@router.patch(
-    "/update_password", 
-    dependencies=[
-        Depends(
-            RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_password"))
-        )
-    ],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/update_password", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["forgot_password"], key_func=user_key_func)
 async def update_password(
     payload: UserPasswordUpdate, 
     request: Request,
@@ -99,12 +92,9 @@ async def update_password(
     
     
 # endpoint to initiate email update
-@router.patch( 
-    "/update_email", 
-    dependencies=[Depends(RateLimiter(times=3, minutes=5, identifier=get_identifier_factory("update_email")))],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/update_email", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def update_email(
     payload: EmailUpdate,
     background_tasks: BackgroundTasks,
@@ -124,6 +114,8 @@ async def update_email(
 # endpoint to complete email update
 @router.post("/complete_email_update", status_code=status.HTTP_200_OK)
 
+
+@limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def complete_email_update(
     otp_code: str, 
     request: Request,
@@ -136,11 +128,10 @@ async def complete_email_update(
    
 
 # endpoint for reset password
-@router.post(
-    "/password-reset/request",
-    dependencies=[Depends(RateLimiter(times=3, minutes=10, identifier=get_identifier))]
-)
+@router.post("/password-reset/request", dependencies=[Depends(attach_email)])
 
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def request_password_reset(
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
@@ -152,11 +143,10 @@ async def request_password_reset(
 
 
 # confirm reset password endpoint
-@router.post(
-    "/password-reset/confirm",
-    dependencies=[Depends(RateLimiter(times=2, minutes=10, identifier=get_identifier))]
-)
+@router.post("/password-reset/confirm", dependencies=[Depends(attach_email)])
 
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def confirm_password_reset(
     request: Request,
     data: PasswordResetConfirm, 
@@ -176,19 +166,16 @@ async def logout_all_devices(request: Request, response: Response):
 
 
 # create endpoint to delete user account(soft-delete)
-@router.patch(
-    "/delete_user", 
-    dependencies=[Depends(RateLimiter(times=2, minutes=15, identifier=get_identifier_factory("delete_user")))],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/delete_user", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
 async def delete_user(
     data: DeleteUserRequest,
     request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-   return await delete_user_account(data=data, current_user=current_user, db=db, request=request)
+   return await delete_user_account(data=data, current_user=current_user, db=db, request=request) 
 
 
 

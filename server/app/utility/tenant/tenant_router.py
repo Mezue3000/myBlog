@@ -2,7 +2,7 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Tenant, TenantMembership, User, TenantInvitation
 from sqlmodel import select
-from fastapi import HTTPException, status, Depends, Header
+from fastapi import HTTPException, status, Depends, Header, Request
 from app.utility.platform.user import get_current_active_user
 from app.utility.platform.database import get_db
 from typing import Optional
@@ -89,7 +89,7 @@ async def get_user_tenants_by_type(
 async def get_tenant_membership(
     user_id: int,
     tenant_id: UUID,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
@@ -109,7 +109,7 @@ async def get_tenant_membership(
 async def get_active_tenant_membership(
     user_id: int,
     tenant_id: UUID,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
@@ -159,9 +159,10 @@ async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSe
 
 # fuction to get current tenant
 async def get_current_tenant(
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
-    x_tenant_id: Optional[UUID] = Header(default=None, alias="X-Tenant-ID",)
+    x_tenant_id: Optional[UUID] = Header(default=None, alias="X-Tenant-ID")
 ):
     tenant_id = (x_tenant_id or current_user.active_tenant_id)
 
@@ -197,6 +198,11 @@ async def get_current_tenant(
         current_user=current_user,
         db=db
     )
+    
+    request.state.tenant = tenant
+    request.state.tenant_id = tenant.tenant_id
+    request.state.tenant_plan = tenant.plan
+    request.state.tenant_type = tenant.type
 
     return tenant
 
@@ -242,7 +248,7 @@ async def get_tenant_membership_by_email(
 async def has_active_invitation(
     tenant_id: UUID,
     email: EmailStr,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     statement = select(TenantInvitation).where(
         TenantInvitation.tenant_id == tenant_id,
@@ -262,7 +268,7 @@ async def has_active_invitation(
 # function to get iv by token
 async def get_invitation_by_token(
     token: str,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     statement = select(TenantInvitation).where(TenantInvitation.token == token)
 
@@ -274,11 +280,36 @@ async def get_invitation_by_token(
 
 
 
+# function to validate tenant
+def validate_tenant(tenant: Tenant):
+    
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found."
+        )
+
+    if tenant.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Workspace deleted."
+        )
+
+    if not tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace suspended."
+        )
+
+
+
+
+
 # function to count tenant members
 async def count_active_non_owner_members(
     tenant_id: UUID,
     owner_id: int,
-    db: AsyncSession,
+    db: AsyncSession
 ) -> int:
 
     statement = (

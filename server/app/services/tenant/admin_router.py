@@ -44,7 +44,7 @@ async def invite_members_service(
     emails: list[EmailStr],
     current_user: User,
     background_tasks: BackgroundTasks,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         # prevent inviting to personal tenants
@@ -207,7 +207,7 @@ async def delete_member_service(
     tenant: Tenant,
     member_id: int,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         logger.info(
@@ -334,7 +334,7 @@ async def delete_tenant_service(
             await count_active_non_owner_members(
                 tenant_id=tenant.tenant_id,
                 owner_id=tenant.owner_id,
-                db=db,
+                db=db
             )
         )
 
@@ -418,7 +418,7 @@ async def deactivate_member_service(
     tenant: Tenant,
     member_id: int,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         logger.info(
@@ -481,13 +481,13 @@ async def deactivate_member_service(
             extra={
                 "tenant_id": tenant.tenant_id,
                 "actor_id": current_user.user_id,
-                "target_user_id": member_id,
+                "target_user_id": member_id
             },
             exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error",
+            detail="Database error"
         )
 
     except Exception as e:
@@ -495,7 +495,7 @@ async def deactivate_member_service(
         logger.exception(f"Failed to deactivate member: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to deactivate member",
+            detail="Failed to deactivate member"
         )
         
         
@@ -507,7 +507,7 @@ async def activate_member_service(
     tenant: Tenant,
     member_id: int,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         logger.info(
@@ -519,7 +519,7 @@ async def activate_member_service(
         if member_id == current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot activate yourself",
+                detail="You cannot activate yourself"
             )
         
         target_membership = await validate_tenant_role_hierarchy(
@@ -581,7 +581,7 @@ async def activate_member_service(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error",
+            detail="Database error"
         )
 
     except Exception as e:
@@ -589,5 +589,5 @@ async def activate_member_service(
         logger.exception(f"Failed to activate member: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to activate member",
+            detail="Failed to activate member"
         )

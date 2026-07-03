@@ -1,14 +1,16 @@
 # import dependencies
 from fastapi import APIRouter, Depends, Query, status, Response, Request
 from app.cores.logging import get_logger
-from fastapi_limiter.depends import RateLimiter
+from app.rate_limit.limiter import limiter
+from app.rate_limit.policy import AUTH_LIMITS
+from app.rate_limit.keys import user_key_func
 from typing import Annotated, Optional
 from app.schemas.platform.global_admin import UserRead, PaginatedUsers, UserUpdate, UserUpdateRead, PaginatedTenants
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from sqlmodel import select, or_, func
 from app.models import User, Role, AuditLog
-from app.utility.platform.security import get_identifier_factory, hash_password, verify_password, require_super_admin, require_admin, require_moderator
+from app.utility.platform.security import hash_password, verify_password, require_super_admin, require_admin, require_moderator
 from app.utility.platform.user import get_current_active_user
 from app.services.platform.global_admin import get_paginated_users, admin_change_user, admins_deactivate_user, admin_get_user_activated, admin_delete_user_account, admin_restore_user_account, get_paginated_tenants, admins_deactivate_tenant, admins_activate_tenant
 from uuid import UUID
@@ -29,6 +31,10 @@ router = APIRouter(
 
 # admin endpoint to retrieve users
 @router.get("/users", response_model=PaginatedUsers)
+
+
+@limiter.limit(AUTH_LIMITS["ip_admins_read"])      
+@limiter.limit(AUTH_LIMITS["get_data"], key_func=user_key_func)
 async def get_users_paginated(
     *,
     page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
@@ -55,20 +61,11 @@ async def get_users_paginated(
     
     
 # admin update-user endpoint
-@router.patch(
-    "/users/{user_id}",
-    dependencies=[
-        Depends(
-            RateLimiter(
-                times=5,
-                minutes=10,
-                identifier=get_identifier_factory("admin_update_user")
-            )
-        )
-    ],
-    response_model=UserUpdateRead
-)
- 
+@router.patch("/users/{user_id}", response_model=UserUpdateRead)
+
+
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_update_user(
     user_id: int,
     request: Request,
@@ -88,20 +85,10 @@ async def admin_update_user(
 
 
 # admin deactivate user endpoint
-@router.patch(
-    "/users/{user_id}/deactivate",
-    dependencies=[
-        Depends(
-            RateLimiter(
-                times=5,
-                minutes=10,
-                identifier=get_identifier_factory("admin_deactivate_user")
-            )
-        )
-    ],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/users/{user_id}/deactivate", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_deactivate_user(
     user_id: int,
     request: Request,
@@ -119,20 +106,10 @@ async def admin_deactivate_user(
 
 
 # admin activate user endpoint
-@router.patch(
-    "/users/{user_id}/activate",
-    dependencies=[
-        Depends(
-            RateLimiter(
-                times=5,
-                minutes=10,
-                identifier=get_identifier_factory("admin_activate_user")
-            )
-        )
-    ],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/users/{user_id}/activate", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_activate_user(
     user_id: int,
     request: Request,
@@ -150,20 +127,10 @@ async def admin_activate_user(
 
 
 # admin delete user endpoint
-@router.patch(
-    "/users/{user_id}/delete",
-    dependencies=[
-        Depends(
-            RateLimiter(
-                times=5,
-                minutes=10,
-                identifier=get_identifier_factory("admin_delete_user")
-            )
-        )
-    ],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/users/{user_id}/delete", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_delete"], key_func=user_key_func)
 async def admin_delete_user(
     user_id: int,
     request: Request,
@@ -181,20 +148,10 @@ async def admin_delete_user(
 
 
 # admin restore user endpoint
-@router.patch(
-    "/users/{user_id}/restore", 
-    dependencies=[
-        Depends(
-            RateLimiter(
-                times=5,
-                minutes=10,
-                identifier=get_identifier_factory("admin_restore_user")
-            )
-        )
-    ],
-    status_code=status.HTTP_200_OK
-)
+@router.patch("/users/{user_id}/restore", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def admin_restore_user(
     user_id: int,
     request: Request,
@@ -214,6 +171,10 @@ async def admin_restore_user(
    
 # admin endpoint to retrieve tenants
 @router.get("/tenants", response_model=PaginatedTenants)
+
+
+@limiter.limit(AUTH_LIMITS["ip_admins_read"])      
+@limiter.limit(AUTH_LIMITS["get_data"], key_func=user_key_func)
 async def get_tenants_paginated(
     *,
     page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
@@ -243,10 +204,10 @@ async def get_tenants_paginated(
     
     
 # endpoint to deactivate tenant
-@router.patch(
-    "/tenants/{tenant_id}/deactivate",
-    status_code=status.HTTP_200_OK,
-)
+@router.patch("/tenants/{tenant_id}/deactivate", status_code=status.HTTP_200_OK)
+
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_deactivate"], key_func=user_key_func)
 async def deactivate_tenant(
     tenant_id: UUID,
     request: Request,
@@ -265,10 +226,10 @@ async def deactivate_tenant(
     
     
 # endpoint to activate tenant
-@router.patch(
-    "/tenants/{tenant_id}/activate",
-    status_code=status.HTTP_200_OK,
-)
+@router.patch("/tenants/{tenant_id}/activate", status_code=status.HTTP_200_OK)
+
+@limiter.limit(AUTH_LIMITS["ip_admin_write"])      
+@limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def activate_tenant(
     tenant_id: UUID,
     request: Request,
