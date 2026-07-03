@@ -1,5 +1,5 @@
 # import dependencies
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import TENANT_LIMITS
 from app.rate_limit.keys import tenant_key_func, user_key_func
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/v1/Tenant",  tags=["tenant-router"])
 
 @limiter.limit(TENANT_LIMITS["team"], key_func=user_key_func)
 async def create_team_workspace(
+    request: Request,
     data: TenantCreate,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -51,6 +52,7 @@ async def create_team_workspace(
 
 @limiter.limit(TENANT_LIMITS["list_tenant"], key_func=user_key_func)
 async def list_all_user_tenants(
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -68,6 +70,7 @@ async def list_all_user_tenants(
 
 @limiter.limit(TENANT_LIMITS["switch_tenant"], key_func=user_key_func)
 async def switch_tenant(
+    request: Request,
     tenant_id: UUID,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -87,6 +90,7 @@ async def switch_tenant(
 
 @limiter.limit(TENANT_LIMITS["update_tenant"], key_func=tenant_key_func)
 async def update_tenant_brand(
+    request: Request,
     data: TenantBrandingUpdate,
     current_tenant: Tenant = Depends(get_current_tenant),
     _: TenantMembership = Depends(require_owner),
@@ -119,8 +123,10 @@ async def update_tenant_brand(
 # endpoint to soft-delete tenant
 @router.delete("/tenants")
 
+@limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=tenant_key_func)
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=user_key_func)
 async def delete_tenant(
+    request: Request,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     _: TenantMembership = Depends(require_owner),

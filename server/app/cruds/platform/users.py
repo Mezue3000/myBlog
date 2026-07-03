@@ -26,6 +26,7 @@ router = APIRouter(prefix="/v1/users", tags=["users"])
 @limiter.limit(AUTH_LIMITS["ip"])      
 @limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def start_registration(
+    request: Request,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -67,6 +68,7 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
 
 @limiter.limit(AUTH_LIMITS["update_user"], key_func=user_key_func)
 async def update_user(
+    request: Request,
     user_data: UserUpdate, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db), 
@@ -81,8 +83,8 @@ async def update_user(
 
 @limiter.limit(AUTH_LIMITS["forgot_password"], key_func=user_key_func)
 async def update_password(
-    payload: UserPasswordUpdate, 
     request: Request,
+    payload: UserPasswordUpdate, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -96,6 +98,7 @@ async def update_password(
 
 @limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def update_email(
+    request: Request,
     payload: EmailUpdate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
@@ -117,8 +120,8 @@ async def update_email(
 
 @limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def complete_email_update(
-    otp_code: str, 
     request: Request,
+    otp_code: str, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession=Depends(get_db)
 ): 
@@ -133,6 +136,7 @@ async def complete_email_update(
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def request_password_reset(
+    request: Request,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -168,10 +172,11 @@ async def logout_all_devices(request: Request, response: Response):
 # create endpoint to delete user account(soft-delete)
 @router.patch("/delete_user", status_code=status.HTTP_200_OK)
 
+@limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
 async def delete_user(
-    data: DeleteUserRequest,
     request: Request,
+    data: DeleteUserRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):

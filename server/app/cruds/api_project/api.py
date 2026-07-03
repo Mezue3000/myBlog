@@ -1,5 +1,5 @@
 # import dependecies
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import API_LIMITS
 from app.rate_limit.keys import tenant_key_func
@@ -28,12 +28,14 @@ router = APIRouter(prefix="/api/v1",  tags=["headless_api"])
    
 @limiter.limit(API_LIMITS["create_project"], key_func=tenant_key_func)
 async def create_api_project(
+    request: Request,
     data: ApiProjectCreate,
     current_tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         project = await create_headless_api_service(
+            request=request,
             db=db,
             tenant=current_tenant,
             data=data
@@ -64,11 +66,13 @@ async def create_api_project(
 
 @limiter.limit(API_LIMITS["generate_key"], key_func=tenant_key_func)
 async def generate_project_api_key(
+    request: Request,
     data: ApiKeyCreate,
     project: ApiProject = Depends(get_current_project),
     db: AsyncSession = Depends(get_db)
 ):
     api_key, raw_key = await create_service_key(
+        request=request,
         db=db,
         project=project,
         data=data
@@ -92,11 +96,13 @@ async def generate_project_api_key(
 
 @limiter.limit(API_LIMITS["list_key"], key_func=tenant_key_func)
 async def list_tenant_api_keys(
+    request: Request,
     project_id: Optional[int] = None,
     current_tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     return await get_tenant_api_keys(
+        request=request,
         db=db,
         tenant_id=current_tenant.tenant_id,
         project_id=project_id
@@ -111,6 +117,7 @@ async def list_tenant_api_keys(
 
 @limiter.limit(API_LIMITS["usage_logs"], key_func=tenant_key_func)
 async def list_tenant_usage_logs(
+    request: Request,
     project_id: Optional[int] = None, 
     api_key_id: Optional[UUID] = None,
     offset: int = 0,
@@ -119,6 +126,7 @@ async def list_tenant_usage_logs(
     db: AsyncSession = Depends(get_db)
 ):
     return await get_tenant_usage_logs(
+        request=request,
         db=db,
         tenant_id=current_tenant.tenant_id,
         project_id=project_id,
@@ -136,12 +144,14 @@ async def list_tenant_usage_logs(
 
 @limiter.limit(API_LIMITS["revoke_key"], key_func=tenant_key_func) 
 async def revoke_project_api_key(
+    request: Request,
     api_key_id: int,
     current_tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         api_key = await revoke_service_api_key(
+            request=request,
             db=db,
             tenant_id=current_tenant.tenant_id,
             api_key_id=api_key_id
