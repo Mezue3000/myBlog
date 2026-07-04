@@ -178,3 +178,10 @@ class TwoFAVerify(SQLModel):
 # schema to delete user account
 class DeleteUserRequest(SQLModel):
     password: str
+    
+    
+    
+
+# schema for service message output
+class MessageResponse(SQLModel):
+    detail: str

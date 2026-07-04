@@ -5,11 +5,12 @@ from app.models import User, Tenant, TenantMembership, ApiProject, APIKey, APIUs
 from app.schemas.api_project.api import ApiProjectCreate, ApiKeyCreate, ApiKeyRead, APIUsageLogRead
 from app.utility.tenant.tenant_router import validate_tenant_uniqueness
 from sqlmodel import select
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from sqlalchemy.exc import SQLAlchemyError
 from app.utility.api_project.api import generate_api_key, hash_api_key, get_project_by_tenant, validate_project_uniqueness
 from app.utility.platform.user import slugify
 from typing import Optional
+from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 
@@ -258,13 +259,49 @@ async def get_tenant_usage_logs(
 
 
 
-# function to revoke api-key
+# function to request OTP verification code
+async def request_revoke_api_key_otp(
+    *,
+    background_tasks: BackgroundTasks,
+    current_user: User
+):
+    # generate OTP
+    otp = await create_email_otp(
+        email=current_user.email,
+        scope="revoke_api_key"
+    )
+
+    # send verification email
+    background_tasks.add_task(
+        send_verification_otp_email,
+        email=current_user.email,
+        otp=otp,
+        scope="revoke_api_key"
+    )
+
+    return {"detail": "A verification code has been sent to your email."}
+
+
+
+
+
+# confirm verification/revoke key
 async def revoke_service_api_key(
     *,
     db: AsyncSession,
     tenant_id: UUID,
-    api_key_id: UUID
+    api_key_id: UUID,
+    current_user: User,
+    otp: int
 ) -> APIKey:
+
+    # verify OTP
+    await verify_email_otp(
+        email=current_user.email,
+        otp=otp,
+        scope="revoke_api_key"
+    )
+
     statement = (
         select(APIKey)
         .where(APIKey.api_key_id == api_key_id)

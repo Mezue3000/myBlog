@@ -45,8 +45,7 @@ class ApiKeyRead(SQLModel):
     
     
     
-    
-    
+
 # create api-usage schema
 class APIUsageLogRead(SQLModel):
     log_id: int
@@ -61,3 +60,11 @@ class APIUsageLogRead(SQLModel):
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+
+
+
+
+# 2FA api-key schema
+class RevokeApiKeyRequest(SQLModel):
+    otp: int

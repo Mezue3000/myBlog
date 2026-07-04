@@ -141,9 +141,7 @@ async def demand_password_reset(
             background_tasks=background_tasks
         )
 
-    return {
-        "message": "If the email exists, a password reset code has been sent."
-    }
+    return {"message": "If the email exists, a password reset code has been sent."}
 
 
 
@@ -436,30 +434,53 @@ async def signout_all_devices(
 
 
 
-# function to delete user(soft-delete)
+# function to request deletion otp
+async def request_delete_user_otp(
+    background_tasks: BackgroundTasks,
+    current_user: User
+):
+    # validate ownership rules
+    verify_users_ownership(current_user.user_id, current_user)
+
+    # generate OTP
+    otp = await create_email_otp(email=current_user.email, scope="delete_user")
+
+    # send verification email
+    background_tasks.add_task(
+        send_verification_otp_email,
+        email=current_user.email,
+        otp=otp,
+        scope="delete_user"
+    )
+
+    return {"detail": "A verification code has been sent to your email."}
+
+
+
+
+
+# confirm user account deletion
 async def delete_user_account(
     data: DeleteUserRequest,
     request: Request,
     current_user: User,
     db: AsyncSession
 ):
-    # verify password belong to the owner
-    if not verify_password(data.password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Deletion aborted."
-        )
-        
     # validate ownership rules
     verify_users_ownership(current_user.user_id, current_user)
-    
+
+    # verify deletion OTP
+    await verify_email_otp(email=current_user.email, otp=data.otp, scope="delete_user")
+
     try:
+        # soft-delete account
         current_user.is_deleted = True
         db.add(current_user)
-        
+
+        # revoke all active sessions
         await logout_all_devices_for_user(current_user.user_id)
-        
-         # extract metadata
+
+        # extract audit metadata
         context = build_audit_context(request)
 
         # audit log
@@ -467,18 +488,20 @@ async def delete_user_account(
             actor_id=current_user.user_id,
             target_user_id=current_user.user_id,
             action="DELETE_USER",
-            changes={"is_deleted": {"old": False, "new": True}},
+            changes={"is_deleted": {"old": False, "new": True,}},
             **context
         )
 
         db.add(audit_entry)
+
         await db.commit()
         await db.refresh(current_user)
+
     except SQLAlchemyError as e:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user"
+            detail="Failed to delete user.",
         ) from e
 
-    return {"detail": "Account deleted successfully"}
+    return {"detail": "Account deleted successfully."}

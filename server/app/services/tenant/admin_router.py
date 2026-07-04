@@ -17,6 +17,7 @@ import os
 from app.schemas.platform.users import UserCreate, UserRead
 from app.utility.platform.user import validate_unique_fields, slugify
 from app.utility.platform.security import hash_password
+from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email
 
 
 
@@ -295,72 +296,88 @@ async def delete_member_service(
         
         
         
-      
-GLOBAL_ADMIN_ROLE_ID = 14
-  
-# function to delete team space
-async def delete_tenant_service(
+        
+# function to request deletion OTP
+async def request_delete_tenant_otp(
+    *,
+    background_tasks: BackgroundTasks,
     tenant: Tenant,
     current_user: User,
     db: AsyncSession
 ):
-    try:
+    logger.info(
+        f"User {current_user.user_id} "
+        f"requesting deletion OTP for tenant "
+        f"{tenant.tenant_id}"
+    )
+    
+    # personal workspace cannot be deleted
+    if tenant.type == "personal":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Personal workspace cannot be deleted"
+        )
 
+    # ensure all members are removed
+    remaining_members = await count_active_non_owner_members(
+        tenant_id=tenant.tenant_id,
+        owner_id=tenant.owner_id,
+        db=db
+    )
+
+    if remaining_members > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Remove all members before deleting the workspace."
+        )
+
+    # generate OTP
+    otp = await create_email_otp(
+        email=current_user.email,
+        scope="delete_tenant"
+    )
+
+    # send email
+    background_tasks.add_task(
+        send_verification_otp_email,
+        email=current_user.email,
+        otp=otp,
+        scope="delete_tenant"
+    )
+
+    return {"detail": "A verification code has been sent to your email."}
+        
+        
+        
+        
+
+# confirm tenant deletion
+async def delete_tenant_service(
+    *,
+    tenant: Tenant,
+    current_user: User,
+    otp: int,
+    db: AsyncSession
+):
+    # Verify deletion OTP
+    await verify_email_otp(
+        email=current_user.email,
+        otp=otp,
+        scope="delete_tenant"
+    )
+
+    try:
         logger.info(
             f"User {current_user.user_id} "
-            f"attempting to delete tenant "
+            f"confirmed deletion of tenant "
             f"{tenant.tenant_id}"
         )
 
-        # owner or global admin only
-        is_owner = (tenant.owner_id == current_user.user_id)
-        is_global_admin = (current_user.role_id == GLOBAL_ADMIN_ROLE_ID)
-
-        if not (is_owner or is_global_admin):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only workspace owner or global admin can delete workspace"
-            )
-
-        # personal tenant protection
-        if tenant.type == "personal":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Personal workspace cannot be deleted"
-            )
-
-        # ensure all members are removed
-        remaining_members = (
-            await count_active_non_owner_members(
-                tenant_id=tenant.tenant_id,
-                owner_id=tenant.owner_id,
-                db=db
-            )
-        )
-
-        if remaining_members > 0:
-
-            logger.warning(
-                f"Tenant {tenant.tenant_id} "
-                f"still has "
-                f"{remaining_members} active members"
-            )
-
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Remove all members before "
-                    "deleting the workspace"
-                ),
-            )
-
-        # soft delete tenant
         tenant.is_active = False
         tenant.is_deleted = True
         tenant.deleted_at = datetime.now(timezone.utc)
-        tenant.deleted_by = (current_user.user_id)
+        tenant.deleted_by = current_user.user_id
 
-        # audit log
         audit_log = AuditLog(
             tenant_id=tenant.tenant_id,
             actor_user_id=current_user.user_id,
@@ -370,18 +387,15 @@ async def delete_tenant_service(
             metadata={
                 "tenant_name": tenant.name,
                 "deleted_by": current_user.user_id
-            },
-        ) 
+            }
+        )
 
         db.add(audit_log)
         await db.commit()
 
-        logger.info(
-            f"Tenant {tenant.tenant_id} "
-            f"deleted successfully"
-        )
+        logger.info(f"Tenant {tenant.tenant_id} deleted successfully")
 
-        return {"message": ("Workspace deleted successfully")}
+        return {"message": "Workspace deleted successfully."}
 
     except HTTPException:
         raise
@@ -390,7 +404,7 @@ async def delete_tenant_service(
         await db.rollback()
         logger.error(
             f"Database error deleting tenant "
-            f"{tenant.tenant_id}: {str(e)}"
+            f"{tenant.tenant_id}: {e}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -401,17 +415,16 @@ async def delete_tenant_service(
         await db.rollback()
         logger.exception(
             f"Failed to delete tenant "
-            f"{tenant.tenant_id}: {str(e)}"
+            f"{tenant.tenant_id}: {e}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete tenant"
         )
-        
-        
-        
-        
-        
+
+
+
+
 
 # function to softly-deactivate user
 async def deactivate_member_service(

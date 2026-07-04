@@ -1,6 +1,6 @@
 # import dependencies
 from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
-from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, PasswordResetConfirm
+from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, UserUpdateRead, UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, PasswordResetConfirm, MessageResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.models import User
@@ -8,7 +8,7 @@ from app.rate_limit.dependencies import attach_email
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import AUTH_LIMITS
 from app.rate_limit.keys import email_key_func, user_key_func
-from app.services.platform.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices 
+from app.services.platform.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices, request_delete_user_otp
 from app.utility.platform.user import get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
  
@@ -41,7 +41,12 @@ async def start_registration(
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
-async def complete_registration(user: UserCreate, otp_code: str, db: AsyncSession = Depends(get_db)):
+async def complete_registration(
+    request: Request, 
+    user: UserCreate,
+    otp_code: str,
+    db: AsyncSession = Depends(get_db)
+):
     return await finalize_registration(user=user, otp_code=otp_code, db=db)
 
 
@@ -125,7 +130,7 @@ async def complete_email_update(
     current_user: User = Depends(get_current_user),
     db: AsyncSession=Depends(get_db)
 ): 
-   return await finalize_email_update(otp_code=otp_code, user=current_user, db=db, request=request)
+   return await finalize_email_update(otp_code=otp_code, request=request, user=current_user, db=db)
    
    
    
@@ -169,18 +174,45 @@ async def logout_all_devices(request: Request, response: Response):
 
 
 
-# create endpoint to delete user account(soft-delete)
+# endpoint to request deletion OTP
 @router.patch("/delete_user", status_code=status.HTTP_200_OK)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
-async def delete_user(
+@router.post("/me/delete/request", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+async def request_delete_user_otp_endpoint(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_active_user)
+):
+    return await request_delete_user_otp(
+        background_tasks=background_tasks,
+        current_user=current_user
+    )
+
+
+
+
+
+# endpoint to delete user account(soft-delete)
+@router.patch("/me", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+
+@limiter.limit(AUTH_LIMITS["ip"])  
+@limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
+async def delete_user_account_endpoint(
     request: Request,
     data: DeleteUserRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-   return await delete_user_account(data=data, current_user=current_user, db=db, request=request) 
+    return await delete_user_account(
+        request=request,
+        data=data,
+        current_user=current_user,
+        db=db
+    )
+
+
 
 
 

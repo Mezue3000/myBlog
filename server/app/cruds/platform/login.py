@@ -58,10 +58,11 @@ async def verify_2fa(
     db: AsyncSession = Depends(get_db)
 ):
     return await confirm_2fa(
-        request=request, 
+        request=request,
         response=response, 
-        data=data, db=db, 
-        background_tasks=background_tasks
+        data=data,  
+        background_tasks=background_tasks,
+        db=db
     )
    
    

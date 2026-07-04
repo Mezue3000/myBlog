@@ -57,3 +57,11 @@ class TenantBrandingRead(SQLModel):
     primary_color: str
     
     model_config = ConfigDict(from_attributes=True)
+    
+    
+    
+    
+
+# delete tenant schema
+class DeleteTenantRequest(SQLModel):
+    otp: int

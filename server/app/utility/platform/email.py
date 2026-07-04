@@ -180,7 +180,7 @@ RESEND_API_URL = "https://api.resend.com/emails"
 
 # function to send verification OTP email
 async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
-    # message per scope
+    # message per scope(user-registration)
     if scope == "registration":
         user_message = (
             "Thank you for signing up! To complete your registration, "
@@ -188,7 +188,9 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         )
         subject = "BlogMap Verification Email - Registration"
         endnote = "If you did not request this, please ignore this email."
-
+    
+    
+    # login 2FA
     elif scope == "2FA": 
         user_message = (
             "We noticed a login attempt on your account. "
@@ -199,7 +201,9 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "If you did not try to access your BlogMap account, "
             "please reset your password immediately."
         )
-
+        
+        
+    # email-update
     elif scope == "update":
         user_message = (
             f"You requested to update your email address to {email}. "
@@ -207,7 +211,9 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         )
         subject = "BlogMap Email Change Confirmation"
         endnote = "If you did not request this change, contact support immediately."
-
+    
+    
+    # reset-password
     elif scope == "password_reset":
         user_message = (
             "You requested to reset your password. "
@@ -215,6 +221,48 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         )
         subject = "BlogMap Password Reset Code "
         endnote = "If you did not request this, please ignore this email."
+    
+    
+    # delete user
+    elif scope == "delete_user":
+        user_message = (
+            "You requested to permanently delete a user account. "
+            "Enter the verification code below to authorize this action:"
+        )
+        subject = "BlogMap User Deletion Verification"
+        endnote = (
+            "If you did not make this request, "
+            "please secure your account immediately."
+        )
+        
+        
+    # delete tenant
+    elif scope == "delete_tenant":
+        user_message = (
+            "You requested to permanently delete your workspace. "
+            "This action cannot be undone. "
+            "Enter the verification code below to continue:"
+        )
+        subject = "BlogMap Workspace Deletion Verification"
+        endnote = (
+            "If you did not make this request, "
+            "your account may be compromised. "
+            "Please change your password immediately."
+        )
+    
+    
+    # revoke API key
+    elif scope == "revoke_api_key":
+        user_message = (
+            "You requested to revoke an API key. "
+            "Applications using this key will immediately lose access. "
+            "Enter the verification code below to continue:"
+        )
+        subject = "BlogMap API Key Revocation Verification"
+        endnote = (
+            "If you did not make this request, "
+            "please review your account security immediately."
+        )
 
     else:
         user_message = "Use the verification code below."

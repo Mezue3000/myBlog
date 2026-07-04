@@ -1,7 +1,7 @@
 # import dependencies
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Tenant, TenantMembership, User, TenantInvitation
-from sqlmodel import select
+from sqlmodel import select, func
 from fastapi import HTTPException, status, Depends, Header, Request
 from app.utility.platform.user import get_current_active_user
 from app.utility.platform.database import get_db
@@ -313,20 +313,18 @@ async def count_active_non_owner_members(
 ) -> int:
 
     statement = (
-        select(TenantMembership)
+        select(func.count(TenantMembership.user_id))
         .where(
-            TenantMembership.tenant_id == tenant_id, 
-            TenantMembership.is_deleted == False,
-            TenantMembership.user_id != owner_id,
+            TenantMembership.tenant_id == tenant_id,
+            TenantMembership.is_deleted.is_(False),
+            TenantMembership.is_active.is_(True),
+            TenantMembership.user_id != owner_id
         )
     )
 
     result = await db.exec(statement)
 
-    memberships = result.all()
-
-    return len(memberships)
-
+    return result.one()
 
 
 

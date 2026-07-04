@@ -30,7 +30,7 @@ router = APIRouter(
 )
 
 # admin endpoint to retrieve users
-@router.get("/users", response_model=PaginatedUsers)
+@router.get("/users", dependencies=[Depends(require_moderator)], response_model=PaginatedUsers)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admins_read"])      
@@ -44,11 +44,10 @@ async def get_users_paginated(
     is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
     is_deleted: Annotated[Optional[bool], Query(description="Filter by delete status")] = None,
     country: Annotated[Optional[str], Query(description="Filter by country")] = None,
-    current_user: User = Depends(require_moderator),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await get_paginated_users(
-        request=request,
         page=page,
         size=size,
         search=search,
@@ -63,7 +62,7 @@ async def get_users_paginated(
     
     
 # admin update-user endpoint
-@router.patch("/users/{user_id}", response_model=UserUpdateRead)
+@router.patch("/users/{user_id}", dependencies=[Depends(require_moderator)], response_model=UserUpdateRead)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
@@ -72,12 +71,12 @@ async def admin_update_user(
     request: Request,
     user_id: int,
     user_data: UserUpdate,
-    current_user: User = Depends(require_moderator),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_change_user(
-        request=request,
         user_id=user_id,
+        request=request,
         user_data=user_data,
         current_user=current_user,
         db=db
@@ -87,19 +86,23 @@ async def admin_update_user(
 
 
 # admin deactivate user endpoint
-@router.patch("/users/{user_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/users/{user_id}/deactivate", 
+    dependencies=[Depends(require_admin)],
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_deactivate_user(
     request: Request,
     user_id: int,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_deactivate_user(
-        request=request,
         user_id=user_id,
+        request=request,
         current_user=current_user,
         db=db
     )
@@ -108,14 +111,14 @@ async def admin_deactivate_user(
 
 
 # admin activate user endpoint
-@router.patch("/users/{user_id}/activate", status_code=status.HTTP_200_OK)
+@router.patch("/users/{user_id}/activate", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_activate_user(
     request: Request,
     user_id: int,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_get_user_activated(
@@ -129,14 +132,14 @@ async def admin_activate_user(
 
 
 # admin delete user endpoint
-@router.patch("/users/{user_id}/delete", status_code=status.HTTP_200_OK)
+@router.patch("/users/{user_id}/delete", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_delete"], key_func=user_key_func)
 async def admin_delete_user(
     request: Request,
     user_id: int,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admin_delete_user_account(
@@ -150,19 +153,19 @@ async def admin_delete_user(
 
 
 # admin restore user endpoint
-@router.patch("/users/{user_id}/restore", status_code=status.HTTP_200_OK)
+@router.patch("/users/{user_id}/restore", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def admin_restore_user(
     request: Request,
     user_id: int,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
    return await admin_restore_user_account(
-       request=request,
        user_id=user_id,
+       request=request,
        current_user=current_user,
        db=db
     )
@@ -172,7 +175,7 @@ async def admin_restore_user(
    
    
 # admin endpoint to retrieve tenants
-@router.get("/tenants", response_model=PaginatedTenants)
+@router.get("/tenants", dependencies=[Depends(require_moderator)], response_model=PaginatedTenants)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admins_read"])      
@@ -187,11 +190,10 @@ async def get_tenants_paginated(
     plan: Annotated[Optional[str], Query(description="Filter by subscription plan")] = None,
     is_active: Annotated[Optional[bool], Query(description="Filter by active status")] = None,
     is_deleted: Annotated[Optional[bool], Query(description="Filter by deleted status")] = None,
-    current_user: User = Depends(require_moderator),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await get_paginated_tenants(
-        request=request,
         page=page,
         size=size,
         search=search,
@@ -208,19 +210,23 @@ async def get_tenants_paginated(
     
     
 # endpoint to deactivate tenant
-@router.patch("/tenants/{tenant_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tenants/{tenant_id}/deactivate", 
+    dependencies=[Depends(require_admin)], 
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_deactivate"], key_func=user_key_func)
 async def deactivate_tenant(
     request: Request,
     tenant_id: UUID,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_deactivate_tenant(
-        request=request,
         tenant_id=tenant_id,
+        request=request,
         current_user=current_user,
         db=db
     )
@@ -230,19 +236,27 @@ async def deactivate_tenant(
     
     
 # endpoint to activate tenant
-@router.patch("/tenants/{tenant_id}/activate", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tenants/{tenant_id}/activate", 
+    dependencies=[Depends(require_admin)], 
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def activate_tenant(
     request: Request,
     tenant_id: UUID,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await admins_activate_tenant(
-        request=request,
         tenant_id=tenant_id,
+        request=request,
         current_user=current_user,
         db=db
     )
+
+
+
+# current_user: User = Depends(require_moderator)

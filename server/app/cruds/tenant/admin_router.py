@@ -24,7 +24,7 @@ router = APIRouter(prefix="/v1/Tenant-admin",  tags=["tenant-admins"])
     
  
 # endpoint for member invitation
-@router.post("/tenants/{tenant_id}/invitations")
+@router.post("/tenants/{tenant_id}/invitations", dependencies=[Depends(require_admin)])
 
 @limiter.limit(TENANT_LIMITS["admin_iv"], key_func=tenant_key_func)
 async def invite_members(
@@ -34,7 +34,6 @@ async def invite_members(
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
-    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     # prevent tenant mismatch
@@ -57,7 +56,7 @@ async def invite_members(
     
     
 # soft-delete member endpoint
-@router.delete("/members/{member_id}")
+@router.delete("/members/{member_id}", dependencies=[Depends(require_admin)])
 
 @limiter.limit(TENANT_LIMITS["admin_delete"], key_func=tenant_key_func)
 async def remove_member(
@@ -65,7 +64,6 @@ async def remove_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
-    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await delete_member_service(
@@ -76,11 +74,12 @@ async def remove_member(
     )
     
     
-    
+
+
     
     
 # endpoint to deactivate member
-@router.patch("/{member_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.patch("/{member_id}/deactivate", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
 
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def deactivate_member(
@@ -88,7 +87,6 @@ async def deactivate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
-    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await deactivate_member_service(
@@ -103,7 +101,7 @@ async def deactivate_member(
     
     
 # endpoint to activate member
-@router.patch("/{member_id}/activate", status_code=status.HTTP_200_OK)
+@router.patch("/{member_id}/activate",  dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
 
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def activate_member(
@@ -111,7 +109,6 @@ async def activate_member(
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
-    _: TenantMembership = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     return await activate_member_service(
@@ -120,3 +117,8 @@ async def activate_member(
         current_user=current_user,
         db=db
     )
+
+
+
+
+#    _: TenantMembership = Depends(require_admin)
