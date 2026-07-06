@@ -203,6 +203,14 @@ class Tenant(SQLModel, table=True):
     tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
     projects: list["ApiProject"] = Relationship(back_populates="tenant")
     subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
+    billing_audits: list["BillingAudit"] = Relationship(
+        back_populates="tenant",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    checkout_sessions: list["StripeCheckoutSession"] = Relationship(
+        back_populates="tenant",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
     audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
     
 
@@ -446,7 +454,49 @@ class WebhookEvent(SQLModel, table=True):
     
     
     
+
+# create billing audit-log model
+class BillingAudit(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "billing_audits"
+
+    billing_id: Optional[int] = Field(default=None, primary_key=True)
     
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, unique=True)
+    
+    event_type: str = Field(max_items=100, index=True)
+    stripe_event_id: str = Field(max_length=255, index=True, unique=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # create relationship
+    tenant: "Tenant" = Relationship(back_populates="billing_audits")
+
+
+
+
+
+# create stripe checkout tracking model
+class StripeCheckoutSession(SQLModel, table=True):
+    __tablename__ = "stripe_checkout_sessions"
+
+    checkout_id: Optional[int] = Field(default=None, primary_key=True)
+    stripe_session_id: str = Field(unique=True, index=True)
+    
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    plan_id: int = Field(foreign_key="plans.plan_id", index=True)
+    
+    # ex., "open", "complete", "expired"
+    status: str = Field(max_length=25, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # create relationship
+    tenant: "Tenant" = Relationship(back_populates="checkout_sessions")
+
+
+
+
+
 # create audit-log model
 class AuditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "audit_logs"
@@ -458,7 +508,7 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
 
-    # who was affected (nullable for system events)
+    # who was affected(nullable for system events)
     target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id", index=True)
 
     action: str = Field(index=True, max_length=50)
@@ -504,4 +554,6 @@ APIUsageLog.model_rebuild()
 Plan.model_rebuild()
 Subscription.model_rebuild()
 WebhookEvent.model_rebuild()
+BillingAudit.model_rebuild()
+StripeCheckoutSession.model_rebuild()
 AuditLog.model_rebuild()

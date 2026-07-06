@@ -52,6 +52,7 @@ setup_logging()
 
 
 
+# retrieve social-login secret-key
 authlib_secret_key=os.getenv("AUTHLIB_SECRET_KEY")
 
 
@@ -121,7 +122,7 @@ async def lifespan(app: FastAPI):
     async with guard_lifespan(app):
         yield
 
-    # close Redis connection pool
+    # close redis connection pool
     await redis_client.close()
         
         
@@ -132,6 +133,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 
+# instantiate rate-limiter
 app.state.limiter = limiter
 
 
