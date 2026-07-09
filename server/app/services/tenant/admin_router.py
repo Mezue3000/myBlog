@@ -359,7 +359,7 @@ async def delete_tenant_service(
     otp: int,
     db: AsyncSession
 ):
-    # Verify deletion OTP
+    # verify deletion OTP
     await verify_email_otp(
         email=current_user.email,
         otp=otp,

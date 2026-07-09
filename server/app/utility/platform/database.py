@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
-from app.models import User, Post, Comment
+from app.models import User, Plan
  
 
 

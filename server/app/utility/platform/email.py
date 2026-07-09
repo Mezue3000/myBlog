@@ -3,8 +3,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 from typing import Optional
-import json, secrets, os, pyotp
-import httpx
+import json, secrets, os, pyotp, httpx
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks
@@ -68,7 +67,7 @@ async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[t
             if (now - created_at).total_seconds() < EMAIL_OTP_COOLDOWN_SECONDS:
                 totp = pyotp.TOTP(
                     payload["secret"],
-                    interval=payload["interval"],
+                    interval=payload["interval"]
                 )
                 return totp.now().zfill(6)
 
@@ -82,13 +81,13 @@ async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[t
             "secret": secret,
             "interval": interval,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "expires_at": (datetime.now(timezone.utc) + expire_time).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + expire_time).isoformat()
         }
 
         await redis_client.setex(
             redis_key,
             interval,
-            json.dumps(payload),
+            json.dumps(payload)
         )
 
         return otp_code
@@ -96,7 +95,7 @@ async def create_email_otp(email: EmailStr, scope: str, expire_delta: Optional[t
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate OTP",
+            detail="Failed to generate OTP"
         )
 
 
@@ -132,7 +131,7 @@ async def verify_email_otp(otp_code: str, scope: str) -> str:
 
         totp = pyotp.TOTP(
             payload["secret"],
-            interval=payload["interval"],
+            interval=payload["interval"]
         )
 
         if totp.verify(otp_code, valid_window=1):
@@ -143,24 +142,16 @@ async def verify_email_otp(otp_code: str, scope: str) -> str:
 
             logger.info(
                 "email_otp_verified",
-                extra={
-                    "email": email,
-                    "scope": scope,
-                },
+                extra={"email": email, "scope": scope}
             )
 
             return email
 
-    logger.warning(
-        "email_otp_failed",
-        extra={
-            "scope": scope,
-        },
-    )
+    logger.warning("email_otp_failed", extra={"scope": scope})
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid or expired OTP",
+        detail="Invalid or expired OTP"
     )
 
 

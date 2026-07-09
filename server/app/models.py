@@ -374,6 +374,7 @@ class APIUsageLog(SQLModel, TenantScopedMixin, table=True):
     # add foreign keys
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     api_key_id: Optional[UUID] = Field(default=None, foreign_key="api_keys.api_key_id", index=True)
+    project_id: int = Field(foreign_key="api_projects.project_id", index=True, nullable=False)
 
     endpoint: Optional[str] = Field(max_length=255)
     method: str = Field(max_length=10)
@@ -394,9 +395,9 @@ class Plan(SQLModel, table=True):
     
     plan_id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=25, nullable=False)
-    type: str = Field(max_length=25)
-    price_monthly: float = Field(default=0.0)
-    price_yearly: float = Field(default=0.0)
+    billing_interval: str = Field(max_length=15)
+    tenant_type: str = Field(max_length=25)
+    amount: float = Field(default=0.00)
     currency: str = Field(max_length= 15, default="usd")
     stripe_price_id: str = Field(max_length=255, nullable=False, unique=True)
     is_active: bool = Field(default=True)
@@ -415,7 +416,7 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False, unique=True)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
@@ -423,9 +424,9 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     stripe_subscription_id: str = Field(max_length=255, unique=True, nullable=False, index=True)
     
     status: str = Field(default="active", max_length=20)
-    type: str = Field(max_length=25)
     current_period_start: Optional[datetime] = Field(default=None)
     current_period_end: Optional[datetime] = Field(default=None)
+    cancel_at_period_end: bool = Field(default=False)
     cancelled_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
@@ -462,9 +463,9 @@ class BillingAudit(SQLModel, TenantScopedMixin, table=True):
     billing_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, unique=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
-    event_type: str = Field(max_items=100, index=True)
+    event_type: str = Field(max_length=100, index=True)
     stripe_event_id: str = Field(max_length=255, index=True, unique=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
@@ -481,6 +482,7 @@ class StripeCheckoutSession(SQLModel, table=True):
 
     checkout_id: Optional[int] = Field(default=None, primary_key=True)
     stripe_session_id: str = Field(unique=True, index=True)
+    stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
     
     # add foreign key
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
@@ -488,7 +490,10 @@ class StripeCheckoutSession(SQLModel, table=True):
     
     # ex., "open", "complete", "expired"
     status: str = Field(max_length=25, index=True)
+    payment_status: str = Field(max_length=75)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = Field(default=None, nullable=True)
+    expired_at: Optional[datetime] = Field(default=None, nullable=True)
     
     # create relationship
     tenant: "Tenant" = Relationship(back_populates="checkout_sessions")
