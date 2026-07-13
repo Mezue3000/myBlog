@@ -4,7 +4,8 @@ from fastapi import Request, HTTPException, status
 
 
 
-# tenant rate-limit key
+
+# tenant-routes rate-limit key
 def tenant_key_func(request: Request) -> str:
     tenant_id = getattr(request.state, "tenant_id", None)
 
@@ -19,7 +20,7 @@ def tenant_key_func(request: Request) -> str:
 
 
 
-# authenticated user rate-limit key
+# authenticated routes user rate-limit key
 def user_key_func(request: Request) -> str:
     user_id = getattr(request.state, "user_id", None)
 

@@ -18,6 +18,7 @@ from app.schemas.platform.users import UserCreate, UserRead
 from app.utility.platform.user import validate_unique_fields, slugify
 from app.utility.platform.security import hash_password
 from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email
+from app.utility.tenant.members_router import validate_team_member_limit
 
 
 
@@ -242,8 +243,8 @@ async def delete_member_service(
         # soft delete membership
         target_membership.is_deleted = True
         target_membership.is_active = False
-        target_membership.removed_at = datetime.now(timezone.utc)
-        target_membership.removed_by = (current_user.user_id)
+        target_membership.deleted_at = datetime.now(timezone.utc)
+        target_membership.deleted_by = current_user.user_id
 
         # create audit log
         audit_log = AuditLog(

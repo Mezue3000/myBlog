@@ -1,16 +1,30 @@
 # import dependencies
-from fastapi import Request
-from app.rate_limit.policy import RATE_LIMITS
+from app.models import Tenant
+from typing import Any
+
+
+
+
+# function to extract plan-limits
+def get_plan_feature(
+    tenant: Tenant,
+    feature: str,
+    default: Any = None
+) -> Any:
+    if tenant.plan is None:
+        return default
+
+    features = tenant.plan.features or {}
+
+    return features.get(feature, default)
 
 
 
 
 
-# function to resolve tenant plan/type
-def get_limit(request: Request):
+# tenant = request.state.tenant
 
-    return RATE_LIMITS[
-        request.state.tenant_type
-    ][
-        request.state.tenant_plan
-    ]
+# rpm = get_plan_feature(tenant, "rate_limit_rpm", 30)
+# max_members = get_plan_feature(tenant, "max_team_members")
+# api_access = get_plan_feature(tenant, "api_access", False)
+# max_projects = get_plan_feature(tenant, "max_projects", 1)

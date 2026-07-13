@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped, declared_attr
 import sqlalchemy as sa, future_uuid
 from sqlalchemy import ForeignKey
+from decimal import Decimal
 
 
 
@@ -114,22 +115,16 @@ class User(SQLModel, table=True):
     
     owned_tenants: list["Tenant"] = Relationship(
         back_populates="owner",
-        sa_relationship_kwargs={
-            "foreign_keys": "[Tenant.owner_id]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[Tenant.owner_id]"}
     )
     
     deleted_tenants: list["Tenant"] = Relationship(
         back_populates="deleted_by_user",
-        sa_relationship_kwargs={
-            "foreign_keys": "[Tenant.deleted_by]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[Tenant.deleted_by]"}
     )
 
     active_tenant: Optional["Tenant"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[User.active_tenant_id]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[User.active_tenant_id]"}
     )
     
     # actions, this user performed
@@ -158,17 +153,25 @@ class Tenant(SQLModel, table=True):
     api_call_limit: Optional[int] = Field(default=1000)
     api_calls_used: Optional[int] = Field(default=0)
     
-    # add foreign key
-    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False) 
+    # add foreign keys
+    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
+    plan_id: int = Field(foreign_key="plans.plan_id", index=True)
+    deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     slug: str = Field(max_length=100, unique=True, index=True)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None) 
-    deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     # stripe
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    
+    # credit system
+    credits_remaining: int = Field(default=500, nullable=False)
+    credits_reset_at: datetime = Field(
+        nullable=False, 
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=30)
+    )
     
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
@@ -177,10 +180,6 @@ class Tenant(SQLModel, table=True):
     )
     
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
-    
-    # subscription
-    plan: str = Field(default="free", max_length=25)
-    max_members: int = Field(default=1)
     
     # branding(tenant-dashboard)
     logo_url: Optional[str] = Field(default=None, max_length=255)
@@ -202,7 +201,9 @@ class Tenant(SQLModel, table=True):
     members: list["TenantMembership"] = Relationship(back_populates="tenant") 
     tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
     projects: list["ApiProject"] = Relationship(back_populates="tenant")
+    plan: "Plan" = Relationship(back_populates="tenants")
     subscriptions: list["Subscription"] = Relationship(back_populates="tenant")
+    credit_logs: list["CreditLog"] = Relationship(back_populates="tenant")
     billing_audits: list["BillingAudit"] = Relationship(
         back_populates="tenant",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -212,7 +213,7 @@ class Tenant(SQLModel, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
-    
+
 
 
     
@@ -228,7 +229,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
     user_id: int = Field(foreign_key="users.user_id", nullable=False, index=True)
 
     role: str = Field(default="member", max_length=50)
-    max_members: int = Field(default=50)
+    max_members: int = Field(default=0)
     is_active: bool = Field(default=True)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
@@ -243,14 +244,10 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
     tenant: "Tenant" = Relationship(back_populates="members")
     user: "User" = Relationship(
         back_populates="tenant_memberships",
-        sa_relationship_kwargs={
-            "foreign_keys": "[TenantMembership.user_id]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[TenantMembership.user_id]"}
     )
     deleted_by_user: Optional["User"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[TenantMembership.deleted_by]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[TenantMembership.deleted_by]"}
     )    
     
     # add unique constraint(one user per tenant)
@@ -283,9 +280,7 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     # create relationships
     tenant: "Tenant" = Relationship(back_populates="tenant_invitations")
     inviter: Optional["User"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[TenantInvitation.invited_by]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[TenantInvitation.invited_by]"}
     )
     
 
@@ -354,9 +349,7 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
     # create Relationships
     project: ApiProject = Relationship(back_populates="api_keys")
     revoked_by_user: Optional["User"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[APIKey.revoked_by]"
-        }
+        sa_relationship_kwargs={"foreign_keys": "[APIKey.revoked_by]"}
     )    
     usage_logs: list["APIUsageLog"] = Relationship(back_populates="api_key")
      
@@ -394,17 +387,20 @@ class Plan(SQLModel, table=True):
     __tablename__ = "plans"
     
     plan_id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=25, nullable=False)
-    billing_interval: str = Field(max_length=15)
-    tenant_type: str = Field(max_length=25)
-    amount: float = Field(default=0.00)
-    currency: str = Field(max_length= 15, default="usd")
+    name: str = Field(max_length=25, nullable=False, index=True)
+    billing_interval: str = Field(max_length=15, index=True)
+    tenant_type: str = Field(max_length=25, nullable=False, index=True)
+    amount: Decimal = Field(default=Decimal("0.00"))
+    credits: int = Field(default=0)
+    currency: str = Field(max_length=9, default="usd")
+    features: Dict[str, Any] = Field(default_factory=dict, sa_type=JSON)
     stripe_price_id: str = Field(max_length=255, nullable=False, unique=True)
+    description: Optional[str] = Field(max_length=255)
     is_active: bool = Field(default=True)
     
     # create relationships
     subscriptions: list["Subscription"] = Relationship(back_populates="plan") 
-    
+    tenants: list["Tenant"] = Relationship(back_populates="plan")
     
     
     
@@ -477,14 +473,14 @@ class BillingAudit(SQLModel, TenantScopedMixin, table=True):
 
 
 # create stripe checkout tracking model
-class StripeCheckoutSession(SQLModel, table=True):
+class StripeCheckoutSession(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "stripe_checkout_sessions"
 
     checkout_id: Optional[int] = Field(default=None, primary_key=True)
     stripe_session_id: str = Field(unique=True, index=True)
     stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
     
-    # add foreign key
+    # add foreign keys
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
@@ -497,6 +493,29 @@ class StripeCheckoutSession(SQLModel, table=True):
     
     # create relationship
     tenant: "Tenant" = Relationship(back_populates="checkout_sessions")
+
+
+
+
+
+# create credits usage log model
+class CreditLog(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "credit_logs"
+
+    credit_log_id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # add foreign key
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+
+    credits_used: int = Field(nullable=False)
+    credits_balance_after: int = Field(nullable=False)
+    action: str = Field(max_length=30, index=True,)
+    description: Optional[str] = Field(default=None, max_length=255,)
+    reference_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # create relationship
+    tenant: Optional["Tenant"] = Relationship(back_populates="credit_logs")
 
 
 
@@ -561,4 +580,5 @@ Subscription.model_rebuild()
 WebhookEvent.model_rebuild()
 BillingAudit.model_rebuild()
 StripeCheckoutSession.model_rebuild()
+CreditLog.model_rebuild()
 AuditLog.model_rebuild()

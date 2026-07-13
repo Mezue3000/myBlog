@@ -417,7 +417,7 @@ async def send_email_with_limit(
             email=item["email"],
             tenant_name=tenant_name,
             invited_by=invited_by,
-            invite_token=item["token"],
+            invite_token=item["token"]
         )
 
 
@@ -437,7 +437,7 @@ async def send_bulk_invitation_emails(
             semaphore,
             item,
             tenant_name,
-            invited_by,
+            invited_by
         )
         for item in invitations
     ]

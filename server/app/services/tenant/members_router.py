@@ -32,14 +32,14 @@ logger = get_logger(__name__)
 async def accept_invitation_service(
     token: str,
     current_user: User,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     logger.info(
         "Accept invitation started",
         extra={
             "user_id": current_user.user_id,
             "email": current_user.email,
-            "token": token,
+            "token": token
         },
     )
 
@@ -49,7 +49,7 @@ async def accept_invitation_service(
         if not invitation:
             logger.warning(
                 "Invitation not found",
-                extra={"token": token},
+                extra={"token": token}
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -64,22 +64,22 @@ async def accept_invitation_service(
                 "Invitation expired",
                 extra={
                     "token": token,
-                    "expires_at": str(invitation.expires_at),
+                    "expires_at": str(invitation.expires_at)
                 },
             )
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
-                detail="Invitation has expired",
+                detail="Invitation has expired"
             )
 
         if invitation.is_accepted:
             logger.warning(
                 "Invitation already accepted",
-                extra={"token": token},
+                extra={"token": token}
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invitation already accepted",
+                detail="Invitation already accepted"
             )
 
         if invitation.email.lower() != current_user.email.lower():
@@ -87,18 +87,18 @@ async def accept_invitation_service(
                 "Invitation email mismatch",
                 extra={
                     "invitation_email": invitation.email,
-                    "user_email": current_user.email,
+                    "user_email": current_user.email
                 },
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invitation belongs to another user",
+                detail="Invitation belongs to another user"
             )
 
         membership = await get_tenant_membership(
             user_id=current_user.user_id,
             tenant_id=invitation.tenant_id,
-            db=db,
+            db=db
         )
 
         if membership:
@@ -106,12 +106,12 @@ async def accept_invitation_service(
                 "User already a member",
                 extra={
                     "user_id": current_user.user_id,
-                    "tenant_id": str(invitation.tenant_id),
+                    "tenant_id": str(invitation.tenant_id)
                 },
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Already a member",
+                detail="Already a member"
             )
 
         new_membership = TenantMembership(
@@ -129,28 +129,25 @@ async def accept_invitation_service(
             "Invitation accepted successfully",
             extra={
                 "user_id": current_user.user_id,
-                "tenant_id": str(invitation.tenant_id),
+                "tenant_id": str(invitation.tenant_id)
             },
         )
 
         return {
             "message": "Successfully joined workspace",
-            "tenant_id": str(invitation.tenant_id),
+            "tenant_id": str(invitation.tenant_id)
         }
 
     except HTTPException:
-        # let fastapi handle intended errors
         await db.rollback()
         raise
 
     except Exception as e:
-        logger.exception(
-            "Unexpected error while accepting invitation"
-        )
+        logger.exception("Unexpected error while accepting invitation")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
+            detail="Internal server error"
         ) from e
         
         
@@ -161,7 +158,7 @@ async def accept_invitation_service(
 async def register_invited_member(
     user: UserCreate,
     token: str,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         # validate invitation
@@ -170,19 +167,19 @@ async def register_invited_member(
         if not invitation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation not found",
+                detail="Invitation not found"
             )
 
         if invitation.is_accepted:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invitation already accepted",
+                detail="Invitation already accepted"
             )
 
         if invitation.expires_at < datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invitation expired",
+                detail="Invitation expired"
             )
 
         # email comes from invitation
@@ -193,7 +190,7 @@ async def register_invited_member(
             db=db,
             fields={
                 "username": user.username.lower(),
-                "email": email,
+                "email": email
             },
         )
 
@@ -212,7 +209,7 @@ async def register_invited_member(
             biography=user.biography,
             country=user.country.lower(),
             city=user.city.lower(),
-            role_id=role_id,
+            role_id=role_id
         )
 
         db.add(new_user)
@@ -263,7 +260,7 @@ async def register_invited_member(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already exists",
+            detail="User already exists"
         )
 
     except Exception as e:
@@ -274,5 +271,5 @@ async def register_invited_member(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed",
+            detail="Registration failed"
         )

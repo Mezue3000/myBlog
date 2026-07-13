@@ -202,6 +202,7 @@ async def get_current_tenant(
     request.state.tenant = tenant
     request.state.tenant_id = tenant.tenant_id
     request.state.tenant_plan = tenant.plan
+    request.state.features = tenant.plan.features
     request.state.tenant_type = tenant.type
 
     return tenant

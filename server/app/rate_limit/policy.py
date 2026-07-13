@@ -1,26 +1,8 @@
-# rate limit policy
-RATE_LIMITS = {
-    
-    "personal": {
-        "free": "100/minute",
-        "pro": "1000/minute",
-        "enterprise": "10000/minute",
-    },
+# import dependencies
+from fastapi import Request
+from app.rate_limit.resolver import get_plan_feature
 
 
-    "team": {
-        "pro": "10000/minute",
-        "enterprise": "100000/minute",
-    },
-
-
-    "headless_api": {
-        "free": "10000/minute",
-        "pro": "100000/minute",
-        "enterprise": "1000000/minute",
-    },
-
-}
 
 
 
@@ -68,5 +50,26 @@ TENANT_LIMITS = {
     "delete_tenant":"3/hour",
     "admin_iv":"30/minute",
     "admin_delete":"5/minute",
-    "admin_patch":"10/minute",
+    "admin_patch":"10/minute"
 }
+
+
+
+
+
+# function to extract tenant-plan limits
+def tenant_rate_limit(request: Request) -> str:
+    tenant = request.state.tenant
+
+    rpm = get_plan_feature(tenant, "rate_limit_rpm")
+
+    if rpm is None:
+        raise RuntimeError(f"Plan '{tenant.plan.name}' is missing 'rate_limit_rpm'.")
+
+    return f"{rpm}/minute"
+
+
+
+
+
+# @limiter.limit(tenant_rate_limit, key_func=tenant_key_func)
