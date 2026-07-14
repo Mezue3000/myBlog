@@ -333,5 +333,40 @@ async def count_active_non_owner_members(
 # store tenant context
 current_tenant_id = ContextVar("current_tenant_id", default=None)
 
-
 bypass_rls = ContextVar("bypass_rls", default=False)
+
+
+
+
+
+
+# function to lock tenant row against race conditions
+async def lock_tenant(tenant_id: UUID, db: AsyncSession) -> Tenant:
+    """
+    Acquires a pessimistic lock on a tenant row.
+
+    Blocks concurrent transactions until the current
+    transaction commits or rolls back.
+    """
+
+    statement = (
+        select(Tenant)
+        .where(
+            Tenant.tenant_id == tenant_id,
+            Tenant.is_deleted.is_(False),
+            Tenant.is_active.is_(True)
+        )
+        .with_for_update()
+    )
+
+    result = await db.exec(statement)
+
+    tenant = result.first()
+
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found."
+        )
+
+    return tenant

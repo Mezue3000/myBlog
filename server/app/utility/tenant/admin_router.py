@@ -3,8 +3,9 @@ from uuid import UUID
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.tenant.tenant_router import get_active_tenant_membership
 from fastapi import HTTPException, status, Depends
-from app.models import TenantMembership
+from app.models import TenantMembership, Tenant, TenantInvitation
 from app.utility.tenant.members_router import get_current_membership
+
 
 
 
@@ -85,7 +86,5 @@ def require_tenant_role(*allowed_roles: str):
 
 
 require_owner = require_tenant_role("owner")
-
-
 
 require_admin = require_tenant_role("owner", "admin")

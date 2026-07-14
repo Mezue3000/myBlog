@@ -8,7 +8,7 @@ from app.utility.tenant.tenant_router import get_current_tenant
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.models import Tenant, User, TenantInvitation, TenantMembership, AuditLog
-from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members
+from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members, lock_tenant
 from app.utility.tenant.admin_router import validate_tenant_role_hierarchy
 from app.utility.tenant.invite import send_tenant_invitation_email, send_bulk_invitation_emails
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -18,8 +18,7 @@ from app.schemas.platform.users import UserCreate, UserRead
 from app.utility.platform.user import validate_unique_fields, slugify
 from app.utility.platform.security import hash_password
 from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email
-from app.utility.tenant.members_router import validate_team_member_limit
-
+from app.utility.tenant.members_router import get_remaining_team_slots
 
 
 
@@ -46,30 +45,33 @@ async def invite_members_service(
     emails: list[EmailStr],
     current_user: User,
     background_tasks: BackgroundTasks,
-    db: AsyncSession
+    db: AsyncSession,
 ):
     try:
-        # prevent inviting to personal tenants
-        if tenant.type == "personal":          
+        # personal tenants cannot invite
+        if tenant.type == "personal":
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN ,
-                detail="Personal workspace cannot invite members. Please upgrade to team plan."
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Personal workspace cannot invite members. Please upgrade to a team plan."
             )
 
-        # ensure current user has permission to invite
+        # RBAC
         membership = await get_tenant_membership(
             user_id=current_user.user_id,
             tenant_id=tenant.tenant_id,
             db=db
         )
 
-        if not membership or membership.role not in ["admin", "owner"]:
+        if (
+            membership is None
+            or membership.role not in ["owner", "admin"]
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admin and owner can invite members."
+                detail="Only owners and admins can invite members."
             )
-        
-        # validate email list
+
+        # validate request
         if not emails:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -82,44 +84,61 @@ async def invite_members_service(
                 detail=(
                     f"Maximum of "
                     f"{MAX_INVITATIONS_PER_REQUEST} "
-                    f"invitations allowed per request."
+                    "emails per request."
                 ),
             )
-        
-        # remove duplicates
+
         normalized_emails = {
             email.lower().strip()
             for email in emails
         }
 
+        # lock tenant
+        tenant = await lock_tenant(tenant_id=tenant.tenant_id, db=db)
+
+        # calculate remaining capacity
+        remaining_slots = await get_remaining_team_slots(tenant=tenant, db=db)
+
         invited_emails = []
         skipped_emails = []
 
-        # process each email
+        # process invitations
         for normalized_email in normalized_emails:
-        
-            # check if user is already a member
-            existing_member = await get_tenant_membership_by_email(
-                tenant_id=tenant.tenant_id,
-                email=normalized_email,
-                db=db
+
+            # no more capacity
+            if remaining_slots <= 0:
+                skipped_emails.append(
+                    {
+                        "email": normalized_email,
+                        "reason": "Team member limit reached."
+                    }
+                )
+                continue
+
+            # already a member?
+            existing_member = (
+                await get_tenant_membership_by_email(
+                    tenant_id=tenant.tenant_id,
+                    email=normalized_email,
+                    db=db
+                )
             )
-        
+
             if existing_member:
                 skipped_emails.append(
                     {
                         "email": normalized_email,
-                        "reason": "Already a member",
+                        "reason": "Already a member."
                     }
                 )
-                
                 continue
-         
+
+            # already invited?
             existing_invitation = (
                 await has_active_invitation(
                     tenant_id=tenant.tenant_id,
                     email=normalized_email,
-                    db=db,
+                    db=db
                 )
             )
 
@@ -127,78 +146,82 @@ async def invite_members_service(
                 skipped_emails.append(
                     {
                         "email": normalized_email,
-                        "reason": (
-                            "Active invitation exists"
-                        ),
+                        "reason": "Active invitation exists."
                     }
                 )
-                
                 continue
-            
-            # generate invite token
+
+            # create invitation
             token = generate_invite_token()
 
             invitation = TenantInvitation(
-            tenant_id=tenant.tenant_id,
-            email=normalized_email,
-            token=token,
-            invited_by=current_user.user_id
-        )
+                tenant_id=tenant.tenant_id,
+                email=normalized_email,
+                token=token,
+                invited_by=current_user.user_id
+            )
 
             db.add(invitation)
+
             invited_emails.append(
                 {
                     "email": normalized_email,
-                    "token": token,
+                    "token": token
                 }
             )
-            
+
+            # consume one available slot
+            remaining_slots -= 1
+
+        # persist
         await db.flush()
         await db.commit()
-   
-   
-        # send invitation emails concurrently
-        if invited_emails:
 
+        # send emails after commit
+        if invited_emails:
             background_tasks.add_task(
                 send_bulk_invitation_emails,
                 invitations=invited_emails,
                 tenant_name=tenant.name,
-                invited_by=current_user.username,
+                invited_by=current_user.username
             )
 
         logger.info(
-            f"User {current_user.user_id} "
-            f"invited {len(invited_emails)} members "
-            f"to tenant {tenant.tenant_id}"
+            "User %s invited %s members to tenant %s.",
+            current_user.user_id,
+            len(invited_emails),
+            tenant.tenant_id
         )
 
         return {
-            "message": ("Invitations processed successfully"),
+            "message": "Invitations processed successfully.",
             "invited_count": len(invited_emails),
             "skipped_count": len(skipped_emails),
-            "invited": [item["email"] for item in invited_emails],
-            "skipped": skipped_emails,
+            "invited": [
+                item["email"]
+                for item in invited_emails
+            ],
+            "skipped": skipped_emails
         }
 
     except HTTPException:
         raise
-    
+
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Database error inviting members: {str(e)}")
+        logger.exception("Database error inviting members.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error",
-        )
+            detail="Database error."
+        ) from e
 
     except Exception as e:
         await db.rollback()
-        logger.error(f"Failed to invite members: {str(e)}")
+        logger.exception("Unexpected error inviting members.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to invite members",
-        )
+            detail="Failed to invite members."
+        ) from e
         
         
         
@@ -214,7 +237,7 @@ async def delete_member_service(
     try:
         logger.info(
             f"User {current_user.user_id} "
-            f"attempting to remove member "
+            f"attempting to delete member "
             f"{member_id} from tenant "
             f"{tenant.tenant_id}"
         )
@@ -251,7 +274,7 @@ async def delete_member_service(
             tenant_id=tenant.tenant_id,
             actor_user_id=current_user.user_id,
             target_user_id=member_id,
-            action="member.removed",
+            action="member.deleted",
             resource_type="tenant_membership",
             resource_id=str(target_membership.membership_id),
             metadata={"role": target_membership.role}
@@ -261,13 +284,13 @@ async def delete_member_service(
         await db.commit()
 
         logger.info(
-            f"Member {member_id} removed "
+            f"Member {member_id} deleted "
             f"from tenant "
             f"{tenant.tenant_id} by "
             f"{current_user.user_id}"
         )
 
-        return {"message": ("Member removed successfully")}
+        return {"message": ("Member deleted successfully")}
 
     except HTTPException:
         raise
@@ -275,7 +298,7 @@ async def delete_member_service(
     except SQLAlchemyError as e:
         await db.rollback()
         logger.error(
-            f"Database error removing member "
+            f"Database error deleting member "
             f"{member_id}: {str(e)}"
         )
         raise HTTPException(
@@ -286,12 +309,12 @@ async def delete_member_service(
     except Exception as e:
         await db.rollback()
         logger.exception(
-            f"Unexpected error removing "
+            f"Unexpected error deleting "
             f"member {member_id}: {str(e)}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to remove member"
+            detail="Failed to delete member"
         )
         
         
@@ -329,7 +352,7 @@ async def request_delete_tenant_otp(
     if remaining_members > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Remove all members before deleting the workspace."
+            detail="delete all members before deleting the workspace."
         )
 
     # generate OTP

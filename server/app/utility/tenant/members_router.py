@@ -5,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.utility.platform.database import get_db
 from app.utility.platform.user import get_current_active_user
 from app.utility.tenant.tenant_router import get_current_tenant
-from app.models import User, Tenant, TenantMembership
+from app.models import User, Tenant, TenantMembership, TenantInvitation
+from typing import Optional
+from datetime import datetime, timezone
 from app.rate_limit.resolver import get_plan_feature
 
 
@@ -41,31 +43,119 @@ async def get_current_membership(
 
 
 
-# function to validate team-member limit
-async def validate_team_member_limit(tenant: Tenant, db: AsyncSession) -> None:
+# function to count the remaining members a tenant can have
+async def get_remaining_team_slots(
+    tenant: Tenant,
+    db: AsyncSession,
+    exclude_invitation_id: Optional[int] = None
+) -> int:
+    """
+    Returns the number of available team member slots.
 
-    if tenant.type != "team":
+    Capacity =
+        max_team_members
+        - active_members
+        - active_pending_invitations
+
+    The invitation being accepted can be excluded from the pending invitation
+    count by passing exclude_invitation_id.
+    """
+    
+    # retrieve a plan feature.
+    max_members = get_plan_feature(tenant=tenant, feature="max_team_members")
+    
+    if max_members is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only team tenants can invite members."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Plan configuration error: " "max_team_members is missing."
         )
-
-    max_members = get_plan_feature(tenant, "max_team_members")
-
+        
+    # count both active/deactivated members
     statement = (
         select(func.count())
         .select_from(TenantMembership)
         .where(
             TenantMembership.tenant_id == tenant.tenant_id,
-            TenantMembership.is_deleted.is_(False)
+            TenantMembership.is_deleted.is_(False),
+            TenantMembership.is_active.is_(True),
+            TenantMembership.is_active.is_(False)
         )
     )
 
     result = await db.exec(statement)
-    current_members = result.one()
+    active_members = result.one()
 
-    if current_members >= max_members:
+    # Count active pending invitations
+    conditions = [
+        TenantInvitation.tenant_id == tenant.tenant_id,
+        TenantInvitation.accepted_at.is_(None),
+        TenantInvitation.expires_at > datetime.now(timezone.utc)
+    ]
+
+    if exclude_invitation_id is not None:
+        conditions.append(
+            TenantInvitation.invitation_id != exclude_invitation_id
+        )
+
+    statement = (
+        select(func.count())
+        .select_from(TenantInvitation)
+        .where(*conditions)
+    )
+
+    result = await db.exec(statement)
+    pending_invitations = result.one()
+
+    remaining_slots = max_members - active_members - pending_invitations
+
+    return max(remaining_slots, 0)
+
+
+
+
+
+# function to ensure workspace can accept more member
+async def ensure_team_has_capacity(
+    tenant: Tenant,
+    db: AsyncSession,
+    exclude_invitation_id: Optional[int] = None
+) -> int:
+    """
+    Ensures a team workspace has capacity for one more member.
+
+    Args:
+        tenant: The team workspace.
+        db: Database session.
+        exclude_invitation_id: Invitation to exclude from the pending
+            invitation count. Used when accepting an invitation.
+
+    Returns:
+        The number of remaining slots.
+
+    Raises:
+        HTTPException(403): If the workspace is not a team workspace or
+            has reached its member limit.
+    """
+
+    if tenant.type != "team":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Your {tenant.plan.name} plan allows a maximum of {max_members} team members."
+            detail="Only team workspaces can have members."
         )
+
+    remaining_slots = await get_remaining_team_slots(
+        tenant=tenant,
+        db=db,
+        exclude_invitation_id=exclude_invitation_id
+    )
+
+    if remaining_slots <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "This workspace has reached the maximum number "
+                "of members allowed by its current subscription."
+            )
+        )
+
+    return remaining_slots

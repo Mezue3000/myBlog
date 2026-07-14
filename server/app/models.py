@@ -228,8 +228,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
     user_id: int = Field(foreign_key="users.user_id", nullable=False, index=True)
 
-    role: str = Field(default="member", max_length=50)
-    max_members: int = Field(default=0)
+    role: str = Field(default="member", max_length=10)
     is_active: bool = Field(default=True)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
@@ -253,7 +252,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
     # add unique constraint(one user per tenant)
     __table_args__ = (
         sa.Index("ix_tenant_memberships_tenant_id", "tenant_id"),
-        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user"),
+        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user")
     )
 
 
@@ -274,6 +273,7 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     token: str = Field(max_length=255, nullable=False, unique=True, index=True)
     invited_by: int = Field(foreign_key="users.user_id")
     is_accepted: bool = Field(default=False)
+    accepted_at: datetime = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=48))
 
@@ -282,7 +282,7 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     inviter: Optional["User"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[TenantInvitation.invited_by]"}
     )
-    
+
 
 
 
@@ -317,12 +317,6 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
 
 
 
-# calculate timestamp expiration
-def get_default_expiration() -> datetime:
-    return datetime.now(timezone.utc) + timedelta(days=30)
-
-
-
 # create api-key model
 class APIKey(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "api_keys"
@@ -343,7 +337,7 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
         nullable=False
     )
 
-    expires_at: Optional[datetime] = Field(default_factory=get_default_expiration, nullable=True)
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=30))
     last_used_at: Optional[datetime] = Field(default=None)
 
     # create Relationships

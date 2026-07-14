@@ -2,6 +2,11 @@
 from app.cores.logging import get_logger
 import os, httpx, asyncio
 from pydantic import EmailStr
+from app.models import User, TenantInvitation, TenantMembership
+from datetime import datetime, timezone
+from sqlmodel.ext.asyncio.session import AsyncSession
+from app.utility.tenant.tenant_router import lock_tenant
+from app.utility.tenant.members_router import ensure_team_has_capacity
 
 
 
@@ -32,7 +37,7 @@ def build_invitation_email_html(
     tenant_name: str,
     invited_by: str,
     invite_link: str,
-    signup_link: str,
+    signup_link: str
 ) -> str:
     return f"""
 <!DOCTYPE html>
@@ -171,8 +176,8 @@ def build_invitation_email_html(
                         line-height:1.6;
                       "
                     >
-                      Log in with your existing account
-                      and accept this invitation.
+                      Sign in with your existing account
+                      to accept this workspace invitation.
                     </div>
 
                     <a
@@ -187,7 +192,7 @@ def build_invitation_email_html(
                         font-weight:600;
                       "
                     >
-                      Log In & Accept Invitation
+                      Sign In & Accept Invitation
                     </a>
 
                   </td>
@@ -226,8 +231,7 @@ def build_invitation_email_html(
                         line-height:1.6;
                       "
                     >
-                      Create a new account using
-                      <strong>{email}</strong>.
+                      Create an account using <strong>{email}</strong>. Your workspace invitation will be accepted automatically after registration.
                     </div>
 
                     <a
@@ -243,7 +247,7 @@ def build_invitation_email_html(
                         font-weight:600;
                       "
                     >
-                      Create Account
+                      Create Account & Join Workspace
                     </a>
 
                   </td>
@@ -336,15 +340,15 @@ async def send_tenant_invitation_email(
     email: EmailStr,
     tenant_name: str,
     invited_by: str,
-    invite_token: str,
+    invite_token: str
 ):
     try:
         invite_link = (
-            f"http://localhost:3000/accept_invitation?token={invite_token}"
+            f"http://localhost:3000/login?invite_token={invite_token}"
         )
 
         signup_link = (
-            f"http://localhost:3000/register_invited_user?invite_token={invite_token}"
+            f"http://localhost:3000/signin?invite_token={invite_token}"
         )
 
         subject = f"You are invited to join {tenant_name}"
@@ -354,33 +358,33 @@ async def send_tenant_invitation_email(
             tenant_name=tenant_name,
             invited_by=invited_by,
             invite_link=invite_link,
-            signup_link=signup_link,
+            signup_link=signup_link
         )
 
         payload = {
             "from": MAIL_FROM,
             "to": [email],
             "subject": subject,
-            "html": html_content,
+            "html": html_content
         }
 
         headers = {
             "Authorization": f"Bearer {MAIL_API_KEY}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json"
         }
 
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(
                 RESEND_API_URL,
                 json=payload,
-                headers=headers,
+                headers=headers
             )
 
         response.raise_for_status()
 
         logger.info(
             "Invitation email sent successfully",
-            extra={"email": email, "tenant": tenant_name},
+            extra={"email": email, "tenant": tenant_name}
         )
 
     except httpx.HTTPStatusError as e:
@@ -391,13 +395,13 @@ async def send_tenant_invitation_email(
                 "status": e.response.status_code,
                 "body": e.response.text,
             },
-            exc_info=True,
+            exc_info=True
         )
 
     except Exception:
         logger.exception(
             "Unexpected error sending invitation email",
-            extra={"email": email},
+            extra={"email": email}
         )
 
 
@@ -443,3 +447,47 @@ async def send_bulk_invitation_emails(
     ]
 
     await asyncio.gather(*tasks)
+
+
+
+
+
+# function to accept workspace invitation
+async def accept_workspace_invitation(
+    invitation: TenantInvitation,
+    user: User,
+    db: AsyncSession
+) -> None:
+    """
+    Accepts a validated invitation.
+
+    Assumes:
+        - invitation exists
+        - invitation is not expired
+        - invitation belongs to the user
+        - user already exists
+    """
+    
+    now = datetime.now(timezone.utc)
+    
+    tenant = await lock_tenant(tenant_id=invitation.tenant_id, db=db)
+
+    if tenant.type == "team":
+        await ensure_team_has_capacity(
+            tenant=tenant,
+            db=db,
+            exclude_invitation_id=invitation.invitation_id
+        )
+
+    membership = TenantMembership(
+        tenant_id=tenant.tenant_id,
+        user_id=user.user_id
+    )
+
+    db.add(membership)
+
+    invitation.is_accepted = True
+    invitation.accepted_at = now
+
+    db.add(invitation)
+    await db.flush()
