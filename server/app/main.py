@@ -6,6 +6,7 @@ import os
 load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
 
 from app.cores.logging import setup_logging
+from app.cores import stripe
 from contextlib import asynccontextmanager
 from guard.lifespan import guard_lifespan
 from fastapi import FastAPI, HTTPException

@@ -29,7 +29,7 @@ async def start_registration(
     request: Request,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await initiate_registration(user_data=user_data, background_tasks=background_tasks, db=db) 
 
@@ -76,7 +76,7 @@ async def update_user(
     request: Request,
     user_data: UserUpdate, 
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db), 
+    db: AsyncSession = Depends(get_db)
 ):
     return await update_user_info(user_data=user_data, current_user=current_user, db=db)
 
@@ -144,7 +144,7 @@ async def request_password_reset(
     request: Request,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
     return await demand_password_reset(email=user_data.email, background_tasks=background_tasks, db=db)
     

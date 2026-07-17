@@ -28,7 +28,7 @@ class Role(SQLModel, table=True):
     __tablename__ = "roles"
 
     role_id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(index=True, unique=True, max_length=50)
+    name: str = Field(unique=True, max_length=50)
 
     # create relationships
     users: list["User"] = Relationship(back_populates="role")
@@ -158,7 +158,7 @@ class Tenant(SQLModel, table=True):
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
-    slug: str = Field(max_length=100, unique=True, index=True)
+    slug: str = Field(max_length=100, unique=True)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None) 
@@ -267,11 +267,11 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     
     # add foreign key
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    invited_by: int = Field(foreign_key="users.user_id")
     
     email: str = Field(max_length=255, default=None, index=True)
     role: str = Field(default="member", max_length=10)
     token: str = Field(max_length=255, nullable=False, unique=True, index=True)
-    invited_by: int = Field(foreign_key="users.user_id")
     is_accepted: bool = Field(default=False)
     accepted_at: datetime = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -381,9 +381,9 @@ class Plan(SQLModel, table=True):
     __tablename__ = "plans"
     
     plan_id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=25, nullable=False, index=True)
-    billing_interval: str = Field(max_length=15, index=True)
-    tenant_type: str = Field(max_length=25, nullable=False, index=True)
+    name: str = Field(max_length=25, nullable=False)
+    billing_interval: str = Field(max_length=15)
+    tenant_type: str = Field(max_length=25, nullable=False)
     amount: Decimal = Field(default=Decimal("0.00"))
     credits: int = Field(default=0)
     currency: str = Field(max_length=9, default="usd")
@@ -429,16 +429,16 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     
     
 
-# create stripe idempotency model
+# create stripe webhook deduplicate-model
 class WebhookEvent(SQLModel, table=True):
-    __tablename__ = "webhook_events"
+    __tablename__ = "stripe_webhook_events"
     
     stripe_event_id: str = Field(max_length=255, primary_key=True, unique=True)
-    event_type: str = Field(max_length=100, nullable=False, index=True)
+    event_type: str = Field(max_length=100, nullable=False)
     payload: str = Field(
         sa_column=sa.Column(Text, nullable=False)
     )
-    processed: bool = Field(default=False, nullable=False, index=True)
+    processed: bool = Field(default=False, nullable=False)
     processed_at: Optional[datetime] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
 
@@ -455,7 +455,7 @@ class BillingAudit(SQLModel, TenantScopedMixin, table=True):
     # add foreign key
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
-    event_type: str = Field(max_length=100, index=True)
+    event_type: str = Field(max_length=100)
     stripe_event_id: str = Field(max_length=255, index=True, unique=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
@@ -479,7 +479,7 @@ class StripeCheckoutSession(SQLModel, TenantScopedMixin, table=True):
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # ex., "open", "complete", "expired"
-    status: str = Field(max_length=25, index=True)
+    status: str = Field(max_length=25)
     payment_status: str = Field(max_length=75)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = Field(default=None, nullable=True)
@@ -503,7 +503,7 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
 
     credits_used: int = Field(nullable=False)
     credits_balance_after: int = Field(nullable=False)
-    action: str = Field(max_length=30, index=True,)
+    action: str = Field(max_length=30)
     description: Optional[str] = Field(default=None, max_length=255,)
     reference_id: Optional[str] = Field(default=None, max_length=255, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -527,7 +527,7 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
     actor_id: int = Field(foreign_key="users.user_id", index=True)
 
     # who was affected(nullable for system events)
-    target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id", index=True)
+    target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id")
 
     action: str = Field(index=True, max_length=50)
 

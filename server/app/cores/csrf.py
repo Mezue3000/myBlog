@@ -29,4 +29,3 @@ async def verify_csrf(request: Request):
 #     current_user: User = Depends(get_current_user),
 # ):
 #     return {"detail": "Post created"}
-

@@ -1,13 +1,22 @@
 # import dependencies
-from app.models import Tenant, Subscription, Plan, CreditLog
+from app.cores.logging import get_logger
+from app.models import Tenant, Subscription, Plan, CreditLog, User, StripeCheckoutSession
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from fastapi import HTTPException, status
 from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy.orm import selectinload
+import stripe
+from app.billings.helpers import get_active_plan, ensure_no_active_subscription, ensure_stripe_customer, expire_open_checkout_sessions, ensure_plan_compatible_with_tenant
+from asyncio import to_thread
 
 
+
+
+
+# initialize logging
+logger = get_logger(__name__)
 
 
 
@@ -139,7 +148,7 @@ async def consume_credits(
             },
         )
     
-    # deduct balance from memory string and update the Tenant table state
+    # deduct balance from memory string and update the tenant table state
     tenant.credits_remaining -= cost
 
     db.add(
@@ -158,6 +167,95 @@ async def consume_credits(
     return tenant   
 
 
+
+
+
+# function to create checkout session
+async def create_checkout_session(
+    tenant: Tenant,
+    current_user: User,
+    plan_id: int,
+    db: AsyncSession
+) -> str:
+
+    try:
+
+        plan = await get_active_plan(plan_id=plan_id, db=db)
+        
+        await ensure_plan_compatible_with_tenant(tenant=tenant, plan=plan)
+          
+        await ensure_no_active_subscription(tenant=tenant, db=db)
+
+        customer_id = await ensure_stripe_customer(
+            tenant=tenant,
+            current_user=current_user,
+            db=db
+        )
+
+        await expire_open_checkout_sessions(tenant=tenant, db=db)
+        
+        # since my service is already async, offload the blocking Stripe call to a worker thread.
+        session =  await to_thread(
+            stripe.checkout.Session.create,
+            customer=customer_id,
+            mode="subscription",
+            line_items=[
+                {
+                    "price": plan.stripe_price_id,
+                    "quantity": 1
+                }
+            ],
+            success_url=(f"http://localhost:8000/billing/success?session_id={session.id}"),
+            cancel_url=(f"http://localhost:8000/billing/cancel"),
+            metadata={
+                "tenant_id": str(tenant.tenant_id),
+                "plan_id": str(plan.plan_id),
+                "tenant_type": tenant.tenant_type
+            },
+        )
+
+        checkout = StripeCheckoutSession(
+            tenant_id=tenant.tenant_id,
+            plan_id=plan.plan_id,
+            stripe_session_id=session.id,
+            stripe_customer_id=session.customer,
+            status=session.status,
+            payment_status=session.payment_status,
+            # convert stripe datetime to python datetime
+            expires_at=datetime.fromtimestamp(session.expires_at, tz=timezone.utc)
+        )
+
+        db.add(checkout)
+        await db.flush()
+
+        logger.info(
+            "Checkout session %s created for tenant %s.",
+            session.id,
+            tenant.tenant_id
+        )
+
+        return session.url
+
+    except HTTPException:
+        raise
+
+    except stripe.error.StripeError:
+        logger.exception(
+            "Stripe checkout creation failed for tenant %s.",
+            tenant.tenant_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to create Stripe Checkout session."
+        )
+
+    except Exception:
+        await db.rollback()
+        logger.exception(
+            "Unexpected checkout creation error for tenant %s.",
+            tenant.tenant_id
+        )
+        raise
 
 
 

@@ -11,10 +11,7 @@ logger = get_logger(__name__)
 
 
 # FastAPI HTTPException handler
-async def http_exception_handler(
-    request: Request,
-    exc: HTTPException
-):
+async def http_exception_handler(request: Request, exc: HTTPException):
     logger.warning(
         "http_exception",
         extra={
@@ -26,10 +23,7 @@ async def http_exception_handler(
         },
     )
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 
