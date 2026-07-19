@@ -2,7 +2,6 @@
 from app.cores.logging import get_logger
 from app.models import Tenant, User, Plan, Subscription, StripeCheckoutSession
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.tenant.tenant_router import lock_tenant
 import stripe
 from sqlmodel import select
 from fastapi import HTTPException, status
@@ -30,9 +29,6 @@ async def ensure_stripe_customer(
 
     This function does not commit the transaction.
     """
-    
-    # acquire row lock to prevent concurrent customer creation.
-    tenant = await lock_tenant(tenant_id=tenant.tenant_id, db=db)
     
     # already linked to Stripe
     if tenant.stripe_customer_id:

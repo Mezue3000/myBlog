@@ -50,7 +50,8 @@ TENANT_LIMITS = {
     "delete_tenant":"3/hour",
     "admin_iv":"30/minute",
     "admin_delete":"5/minute",
-    "admin_patch":"10/minute"
+    "admin_patch":"10/minute",
+    "create_session":"3/minute"
 }
 
 

@@ -87,6 +87,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
+        index=True,
         nullable=False
     )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
@@ -164,7 +165,7 @@ class Tenant(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None) 
     
     # stripe
-    stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True, unique=True)
     
     # credit system
     credits_remaining: int = Field(default=500, nullable=False)
@@ -176,6 +177,7 @@ class Tenant(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
+        index=True,
         nullable=False
     )
     
@@ -304,6 +306,7 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
+        index=True,
         nullable=False
     )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
@@ -334,6 +337,7 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
+        index=True,
         nullable=False
     )
 
@@ -373,7 +377,7 @@ class APIUsageLog(SQLModel, TenantScopedMixin, table=True):
     project: ApiProject = Relationship(back_populates="usage_logs")
     api_key: APIKey = Relationship(back_populates="usage_logs")
     
-    
+
     
     
 #  create plan model
@@ -410,7 +414,6 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
-    stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
     stripe_subscription_id: str = Field(max_length=255, unique=True, nullable=False, index=True)
     
     status: str = Field(default="active", max_length=20)
@@ -418,7 +421,7 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     current_period_end: Optional[datetime] = Field(default=None)
     cancel_at_period_end: bool = Field(default=False)
     cancelled_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True) 
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
 
     # create relationships
@@ -520,7 +523,6 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
-    
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
     # who performed the action
@@ -530,7 +532,6 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
     target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id")
 
     action: str = Field(index=True, max_length=50)
-
     changes: Optional[Dict[str, Any]] = Field(default=None, sa_type=JSON, sa_column_kwargs={"nullable": True})
     
     # device + request context
@@ -539,7 +540,6 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
    
     # request metadata
     endpoint: Optional[str] = Field(default=None, max_length=70)
-
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
 
     # create relationships

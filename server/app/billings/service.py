@@ -99,7 +99,7 @@ async def reset_credits_if_needed(tenant: Tenant, db: AsyncSession) -> None:
  
  
 
-# service function to deduct allocated credits
+# function to deduct allocated credits
 async def consume_credits(
     tenant_id: UUID,
     cost: int,
@@ -126,7 +126,7 @@ async def consume_credits(
     if tenant is None or tenant.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
+            detail="Tenant not found."
         )
 
     if not tenant.is_active:
