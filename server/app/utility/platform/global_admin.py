@@ -550,7 +550,7 @@ async def persist_tenant_with_audit(
     tenant: Tenant,
     action: str,
     changes: dict,
-    update_callback: Callable[[Tenant], Any],
+    update_callback: Callable[[Tenant], Any]
 ) -> Tenant:
     
     # apply update
@@ -566,7 +566,7 @@ async def persist_tenant_with_audit(
         entity_type="tenant",
         entity_id=str(tenant.tenant_id),
         changes=changes,
-        request=request,
+        request=request
     )
 
     await db.commit()

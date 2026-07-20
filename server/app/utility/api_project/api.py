@@ -90,7 +90,7 @@ async def get_current_project(
 
 
 
-# function to validate project uniqueness
+# function to validate project name uniqueness
 async def validate_project_uniqueness(
     *,
     tenant_id: UUID,
@@ -133,7 +133,7 @@ def validate_project(project: ApiProject):
     if not project.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Project disabled."
+            detail="Project deactivated."
         )
 
 
@@ -143,6 +143,7 @@ def validate_project(project: ApiProject):
 
 # function to get real client ip
 def get_client_ip(request: Request) -> str:
+    
     forwarded = request.headers.get("X-Forwarded-For")
 
     if forwarded:
@@ -244,7 +245,7 @@ def validate_api_key_format(api_key: str) -> str:
 async def get_api_key_by_hash(
     *,
     db: AsyncSession,
-    key_hash: str,
+    key_hash: str
 ) -> APIKey | None:
     
     statement = (

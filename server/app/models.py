@@ -76,7 +76,7 @@ class User(SQLModel, table=True):
     username: str = Field(max_length=55, nullable=False, unique=True, index=True)
     email: str = Field(max_length=75, nullable=False, unique=True, index=True)
     biography: str = Field(max_length=350, nullable=True)
-    password_hash: str = Field(max_length=255, nullable=False)
+    password_hash: str = Field(max_length=255, nullable=True)
     country: str = Field(max_length=25, nullable=False)
     city: str = Field(max_length=25, nullable=False)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
@@ -151,8 +151,6 @@ class Tenant(SQLModel, table=True):
     tenant_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
     name: str = Field(max_length=255, index=True, unique=True)
     type: str = Field(default="personal", max_length=25)
-    api_call_limit: Optional[int] = Field(default=1000)
-    api_calls_used: Optional[int] = Field(default=0)
     
     # add foreign keys
     owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
@@ -169,10 +167,7 @@ class Tenant(SQLModel, table=True):
     
     # credit system
     credits_remaining: int = Field(default=500, nullable=False)
-    credits_reset_at: datetime = Field(
-        nullable=False, 
-        default=lambda: datetime.now(timezone.utc) + timedelta(days=30)
-    )
+    next_credits_reset_at: datetime = Field(nullable=True)
     
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
@@ -392,7 +387,7 @@ class Plan(SQLModel, table=True):
     credits: int = Field(default=0)
     currency: str = Field(max_length=9, default="usd")
     features: Dict[str, Any] = Field(default_factory=dict, sa_type=JSON)
-    stripe_price_id: str = Field(max_length=255, nullable=False, unique=True)
+    stripe_price_id: str = Field(max_length=255, nullable=False, unique=True, index=True)
     description: Optional[str] = Field(max_length=255)
     is_active: bool = Field(default=True)
     
@@ -419,8 +414,10 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     status: str = Field(default="active", max_length=20)
     current_period_start: Optional[datetime] = Field(default=None)
     current_period_end: Optional[datetime] = Field(default=None)
+    
     cancel_at_period_end: bool = Field(default=False)
     cancelled_at: Optional[datetime] = Field(default=None)
+    
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True) 
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
 
@@ -432,7 +429,7 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     
     
 
-# create stripe webhook deduplicate-model
+# create stripe webhook idempotency-model
 class WebhookEvent(SQLModel, table=True):
     __tablename__ = "stripe_webhook_events"
     
@@ -504,8 +501,8 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
     # add foreign key
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
 
-    credits_used: int = Field(nullable=False)
-    credits_balance_after: int = Field(nullable=False)
+    amount: int = Field(nullable=False)
+    balance_after: int = Field(nullable=False)
     action: str = Field(max_length=30)
     description: Optional[str] = Field(default=None, max_length=255,)
     reference_id: Optional[str] = Field(default=None, max_length=255, index=True)

@@ -66,21 +66,21 @@ async def reset_credits_if_needed(tenant: Tenant, db: AsyncSession) -> None:
 
     now = datetime.now(timezone.utc)
 
-    if tenant.credits_last_reset_at is None:
+    if tenant.next_credits_reset_at is None:
         should_reset = True
 
     elif subscription.current_period_start is None:
         should_reset = False
 
     else:
-        should_reset = tenant.credits_last_reset_at < subscription.current_period_start
+        should_reset = tenant.next_credits_reset_at < subscription.current_period_start
 
     if not should_reset:
         return
 
     # reset credits
     tenant.credits_remaining = plan.credits
-    tenant.credits_last_reset_at = now
+    tenant.next_credits_reset_at = subscription.current_period_end
 
     db.add(
         CreditLog(
@@ -262,7 +262,6 @@ async def create_checkout_session(
 
 
 
-
 # define cost
 # CREDIT_COSTS = {
 #     "text_generation": 20,
@@ -274,26 +273,26 @@ async def create_checkout_session(
 # async def generate_text(
 #     payload: GenerateRequest,
 #     current_tenant: Tenant = Depends(get_current_tenant),
-#     db: AsyncSession = Depends(get_db),
+#     db: AsyncSession = Depends(get_db)
 # ):
 #     try:
-#         # Consume credits first
+#         # consume credits first
 #         await consume_credits(
 #             tenant_id=current_tenant.tenant_id,
 #             cost=CREDIT_COSTS["text_generation"],
 #             action="text_generation",
 #             description="AI text generation",
-#             db=db,
+#             db=db
 #         )
 
-#         # Call your AI provider
+#         # call your AI provider
 #         response = await ai_service.generate(payload.prompt)
 
-#         # Save generation history
+#         # save generation history
 #         history = AIHistory(
 #             tenant_id=current_tenant.tenant_id,
 #             prompt=payload.prompt,
-#             response=response,
+#             response=response
 #         )
 
 #         db.add(history)
@@ -303,7 +302,7 @@ async def create_checkout_session(
 
 #         return {
 #             "credits_remaining": current_tenant.credits_remaining,
-#             "response": response,
+#             "response": response
 #         }
 
 #     except HTTPException:

@@ -22,7 +22,6 @@ class ApiProjectCreate(SQLModel):
 # create api-key schema
 class ApiKeyCreate(SQLModel):
     name: str = Field(max_length=100)
-    expires_at: Optional[datetime] = None
     
     
     

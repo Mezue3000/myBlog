@@ -115,8 +115,7 @@ async def create_service_key(
             project_id=project.project_id,
             name=data.name,
             key_hash=hashed_key,
-            key_prefix=raw_key[:15],
-            expires_at=data.expires_at
+            key_prefix=raw_key[:15]
         )
 
         db.add(api_key)
@@ -168,14 +167,10 @@ async def get_tenant_api_keys(
             project_id=project_id
         )
 
-        statement = statement.where(
-            APIKey.project_id == project_id
-        )
+        statement = statement.where(APIKey.project_id == project_id)
 
     # add ordering constraint
-    statement = statement.order_by(
-        APIKey.created_at.desc()
-    )
+    statement = statement.order_by(APIKey.created_at.desc())
     
     result = await db.exec(statement)
     api_keys = result.all()

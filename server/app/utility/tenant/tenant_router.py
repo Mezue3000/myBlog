@@ -23,8 +23,8 @@ async def get_personal_tenant(user_id: int, db: AsyncSession) -> Tenant:
     statement = select(Tenant).where(
         Tenant.owner_id == user_id,
         Tenant.type == "personal",
-        Tenant.is_active == True,
-        Tenant.is_deleted == False
+        Tenant.is_active.is_(True),
+        Tenant.is_deleted.is_(False)
     )
     
     result = await db.exec(statement)
@@ -67,12 +67,12 @@ async def get_user_tenants_by_type(
         .join(TenantMembership)
         .where(
             TenantMembership.user_id == user_id,
-            TenantMembership.is_active == True,
-            TenantMembership.is_deleted == False,
+            TenantMembership.is_active.is_(True),
+            TenantMembership.is_deleted.is_(False),
             
             Tenant.type == "team",
-            Tenant.is_active == True,
-            Tenant.is_deleted  == False
+            Tenant.is_active.is_(True),
+            Tenant.is_deleted.is_(False)
         )
         .order_by(Tenant.name.asc())
     )
@@ -94,7 +94,7 @@ async def get_tenant_membership(
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
         TenantMembership.tenant_id == tenant_id,
-        TenantMembership.is_deleted == False
+        TenantMembership.is_deleted.is_(False)
     )
 
     result = await db.exec(statement)
@@ -114,8 +114,8 @@ async def get_active_tenant_membership(
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
         TenantMembership.tenant_id == tenant_id,
-        TenantMembership.is_active == True,
-        TenantMembership.is_deleted == False
+        TenantMembership.is_active.is_(True),
+        TenantMembership.is_deleted.is_(False)
     )
 
     result = await db.exec(statement)
@@ -233,7 +233,7 @@ async def get_tenant_membership_by_email(
         )
         .where(
             TenantMembership.tenant_id == tenant_id,
-            User.email == email,
+            User.email == email
         )
     )
 
@@ -254,7 +254,7 @@ async def has_active_invitation(
     statement = select(TenantInvitation).where(
         TenantInvitation.tenant_id == tenant_id,
         TenantInvitation.email == email,
-        TenantInvitation.is_accepted == False,
+        TenantInvitation.is_accepted.is_(False),
         TenantInvitation.expires_at > datetime.now(timezone.utc)
     )
 

@@ -26,7 +26,7 @@ async def validate_tenant_role_hierarchy(
     actor_user_id: int,
     target_user_id: int,
     tenant_id: UUID,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     actor_membership = await get_active_tenant_membership(
         user_id=actor_user_id,

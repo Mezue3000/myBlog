@@ -414,7 +414,7 @@ async def send_email_with_limit(
     semaphore: asyncio.Semaphore,
     item: dict,
     tenant_name: str,
-    invited_by: str,
+    invited_by: str
 ):
     async with semaphore:
         await send_tenant_invitation_email(
@@ -432,7 +432,7 @@ async def send_email_with_limit(
 async def send_bulk_invitation_emails(
     invitations: list[dict],
     tenant_name: str,
-    invited_by: str,
+    invited_by: str
 ):
     semaphore = asyncio.Semaphore(10)
 

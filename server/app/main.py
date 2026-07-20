@@ -43,6 +43,7 @@ from app.utility.tenant.tenant_router import current_tenant_id, bypass_rls
 from guard import SecurityMiddleware
 from app.cores.security import security_config
 from starlette.middleware.sessions import SessionMiddleware
+from app.cruds.stripe import billing
 
 
 
@@ -177,3 +178,4 @@ app.include_router(members_router.router)
 app.include_router(tenant_router.router)
 app.include_router(social_login.router)
 app.include_router(api.router)
+app.include_router(billing.router)

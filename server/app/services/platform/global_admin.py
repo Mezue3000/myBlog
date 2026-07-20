@@ -33,7 +33,7 @@ async def get_paginated_users(
     # validate access
     current_level = validate_admin_access(current_user)
     
-    # Log admin action
+    # log admin action
     logger.info(
         "admin_view_users",
         extra={
@@ -298,7 +298,7 @@ async def admin_delete_user_account(
         update_callback=lambda u: setattr(u, "is_deleted", True),
     )
 
-    # force logout (post-commit, non-transactional)
+    # force logout
     await logout_all_devices_for_user(target_user.user_id)
 
     return {"detail": "User account deleted successfully"}

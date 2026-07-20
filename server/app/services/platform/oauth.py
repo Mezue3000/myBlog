@@ -56,10 +56,7 @@ logger = get_logger(__name__)
 
 
 
-ALLOWED_PROVIDERS = {
-    "google",
-    "github"
-}
+ALLOWED_PROVIDERS = {"google", "github"}
 
 
 
@@ -139,12 +136,12 @@ async def handle_social_login(
     is_new_user = False
 
     try:
-        # Find user by provider
+        # find user by provider
         statement = select(User).where(User.provider == provider, User.provider_id == provider_id)
         result = await db.exec(statement)
         user = result.first()
 
-        # Existing social account
+        # existing social account
         if user:
             logger.info(
                 "Existing social account found",
@@ -152,12 +149,12 @@ async def handle_social_login(
             )
 
         else:
-            # Find user by email
+            # find user by email
             email_statement = select(User).where(User.email == email)
             email_result = await db.exec(email_statement)
             existing_email = email_result.first()
 
-            # Link provider to existing account
+            # link provider to existing account
             if existing_email:
                 try:
                     existing_email.provider = provider
@@ -183,7 +180,7 @@ async def handle_social_login(
                         detail="Unable to link social account."
                     )
 
-            # Create brand new user
+            # create brand new user
             else:
                 logger.info(
                     "Creating new social user",

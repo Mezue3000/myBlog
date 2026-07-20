@@ -24,8 +24,8 @@ async def get_current_membership(
     statement = select(TenantMembership).where(
         TenantMembership.user_id == current_user.user_id,
         TenantMembership.tenant_id == tenant.tenant_id,
-        TenantMembership.is_deleted == False,
-        TenantMembership.is_active == True
+        TenantMembership.is_deleted.is_(False),
+        TenantMembership.is_active.is_(True)
     )
     
     result = await db.exec(statement)

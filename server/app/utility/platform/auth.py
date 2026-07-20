@@ -56,7 +56,7 @@ def create_access_token(user_id: str, expire_delta: Optional[timedelta] = None) 
         "sub": str(user_id),
         "scope": "access",
         "iat": int(now.timestamp()),
-        "exp": now + (expire_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)), 
+        "exp": now + (expire_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     }
     
     encoded_jwt = jwt.encode(payload, private_key, algorithm=ALGORITHM)
@@ -99,6 +99,7 @@ async def create_refresh_token(user_id: str) -> str:
 
 # function to rotate/invalidate old refresh token
 async def rotate_refresh_token(old_token: str) -> Optional[str]:
+    
     if not old_token:
         logger.warning("refresh_failed", extra={"reason": "missing_token"})
         return None
@@ -160,7 +161,7 @@ async def create_trusted_device(user_id: str) -> str:
     await redis_client.setex(
         key,
         int(timedelta(days=30).total_seconds()),
-        json.dumps(payload),
+        json.dumps(payload)
     )
 
     return device_id
@@ -206,7 +207,7 @@ def set_auth_cookies(
             samesite="Lax", # Use "Strict" if you don't need cross-site navigation
             max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             domain=COOKIE_DOMAIN,
-            path="/",
+            path="/"
         )
 
     # refresh token logic
@@ -219,7 +220,7 @@ def set_auth_cookies(
             samesite="Lax",
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
             domain=COOKIE_DOMAIN,
-            path="/",
+            path="/"
         )
         
     # csrf token Logic
@@ -231,7 +232,7 @@ def set_auth_cookies(
             secure=False,
             samesite="Lax",
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-            path="/",
+            path="/"
         )
 
 
@@ -295,7 +296,7 @@ async def handle_2fa_challenge(
 
     return {
         "detail": "2FA code sent to your email",
-        "requires_2fa": True,
+        "requires_2fa": True
     }
     
     

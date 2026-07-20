@@ -286,12 +286,12 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         "from": MAIL_FROM,
         "to": [email],
         "subject": subject,
-        "html": html_content,
+        "html": html_content
     }
 
     headers = {
         "Authorization": f"Bearer {MAIL_API_KEY}",
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
     }
 
     # send email
@@ -300,7 +300,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             response = await client.post(
                 RESEND_API_URL,
                 json=payload,
-                headers=headers,
+                headers=headers
             )
 
         response.raise_for_status()  

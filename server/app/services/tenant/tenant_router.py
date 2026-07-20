@@ -120,8 +120,8 @@ async def switch_tenant_service(
     try:
         statement = select(Tenant).where(
             Tenant.tenant_id == tenant_id,
-            Tenant.is_active == True,
-            Tenant.is_deleted == False
+            Tenant.is_active.is_(True),
+            Tenant.is_deleted.is_(False)
         )
 
         result = await db.exec(statement)

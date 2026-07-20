@@ -57,11 +57,9 @@ async def list_all_user_tenants(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    return await get_tenants_service(
-        current_user=current_user,
-        db=db
-    )
-    
+    return await get_tenants_service(current_user=current_user, db=db)
+
+
     
     
     

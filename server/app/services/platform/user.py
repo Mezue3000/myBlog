@@ -181,9 +181,7 @@ async def verify_password_reset(
         extra={"user_id": user.user_id}
     )
 
-    return {
-        "message": "Password reset successful. Please log in again."
-    }
+    return {"message": "Password reset successful. Please log in again."}
     
     
 
@@ -358,7 +356,7 @@ async def finalize_email_update(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
     
-    # capture old data for the Audit Log
+    # capture old email for audit-logging
     old_email = current_user.email
     
     # update and safe

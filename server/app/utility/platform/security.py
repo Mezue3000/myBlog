@@ -247,7 +247,7 @@ async def create_auth_audit_log_safe(
     action: str,
     user_id: str,
     metadata: dict,
-    context: dict,
+    context: dict
 ):
     try:
         await create_auth_audit_log_bg(
