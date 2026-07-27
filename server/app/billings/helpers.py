@@ -1,10 +1,13 @@
 # import dependencies
 from app.cores.logging import get_logger
-from app.models import Tenant, User, Plan, Subscription, StripeCheckoutSession
+from app.models import Tenant, User, Plan, Subscription, StripeCheckoutSession, WebhookEvent
 from sqlmodel.ext.asyncio.session import AsyncSession
-import stripe
+import stripe, json
 from sqlmodel import select
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
+from typing import Optional
+from datetime import datetime, timezone
 
 
 
@@ -235,3 +238,172 @@ async def ensure_plan_compatible_with_tenant(tenant: Tenant, plan: Plan) -> None
                 f"for {plan.tenant_type} workspaces."
             ),
         )
+
+
+
+
+
+# function to route stripe events
+EVENT_HANDLERS = {
+#     "checkout.session.completed": handle_checkout_completed,
+#     "invoice.paid": handle_invoice_paid,
+#     "invoice.payment_failed": handle_invoice_payment_failed,
+#     "customer.subscription.updated": handle_subscription_updated,
+#     "customer.subscription.deleted": handle_subscription_deleted,
+}
+
+
+
+async def dispatch_webhook(
+    *,
+    event: stripe.Event,
+    db: AsyncSession
+) -> None:
+    """
+    Dispatch a Stripe webhook event to its handler.
+
+    Unsupported events are ignored
+    """
+
+    event_id = event["id"]
+    event_type = event["type"]
+
+    handler = EVENT_HANDLERS.get(event_type)
+
+    if handler is None:
+        logger.info(
+            "Ignoring unsupported Stripe event '%s' (%s).",
+            event_type,
+            event_id
+        )
+        return
+
+    logger.info(
+        "Dispatching Stripe event '%s' (%s).",
+        event_type,
+        event_id
+    )
+
+    try:
+        await handler(event=event, db=db)
+
+    except stripe.error.StripeError:
+        logger.exception(
+            "Stripe SDK error while processing '%s' (%s).",
+            event_type,
+            event_id
+        )
+        raise
+
+    except Exception:
+        logger.exception(
+            "Unexpected error while processing '%s' (%s).",
+            event_type,
+            event_id
+        )
+        raise
+
+    logger.info(
+        "Successfully processed Stripe event '%s' (%s).",
+        event_type,
+        event_id
+    )
+
+
+
+
+
+ # raised when Stripe retries an already registered event
+class DuplicateWebhookEvent(Exception):
+    pass
+   
+    
+    
+# function to register stripe webhook
+async def register_webhook_event( 
+    *,
+    event: dict,
+    db: AsyncSession
+) -> None:
+    """
+    Register a Stripe webhook.
+
+    This owns its own transaction so the event
+    is permanently recorded before any business
+    logic starts.
+    """
+
+    webhook = WebhookEvent(
+        stripe_event_id=event["id"],
+        event_type=event["type"],
+        payload=json.dumps(event)
+    )
+
+    db.add(webhook)
+
+    try:
+        await db.commit()
+
+    except IntegrityError as exc:
+        await db.rollback()
+        raise DuplicateWebhookEvent from exc
+
+    logger.info("Registered Stripe webhook %s.", event["id"])
+
+
+
+
+
+# function to get webhook event
+async def get_webhook_event(
+    *,
+    event_id: str,
+    db: AsyncSession
+) -> Optional[WebhookEvent]:
+
+    statement = (
+        select(WebhookEvent)
+        .where(WebhookEvent.stripe_event_id == event_id)
+    )
+
+    result = await db.exec(statement)
+    
+    return result.first()
+
+
+
+
+
+# fuction to update webhook event--- both processed and failed 
+async def update_webhook_status(
+    *,
+    event_id: str,
+    processed: bool,
+    db: AsyncSession,
+    error: Optional[Exception] = None
+) -> None:
+    """
+    Update webhook processing state.
+
+    Does NOT commit.
+    """
+
+    webhook = await get_webhook_event(event_id=event_id, db=db)
+
+    if webhook is None:
+        return
+
+    webhook.processed = processed
+
+    if processed:
+        webhook.processed_at = datetime.now(timezone.utc)
+        webhook.processing_error = None
+
+    else:
+        webhook.retry_count += 1
+        if error is not None:
+            webhook.processing_error = str(error)[:1000]
+
+    db.add(webhook)
+
+    await db.flush()

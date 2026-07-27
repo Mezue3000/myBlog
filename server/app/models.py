@@ -75,10 +75,7 @@ class User(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, primary_key=True) 
     username: str = Field(max_length=55, nullable=False, unique=True, index=True)
     email: str = Field(max_length=75, nullable=False, unique=True, index=True)
-    biography: str = Field(max_length=350, nullable=True)
     password_hash: str = Field(max_length=255, nullable=True)
-    country: str = Field(max_length=25, nullable=False)
-    city: str = Field(max_length=25, nullable=False)
     is_active: bool = Field(default=True, sa_column_kwargs={"server_default": sa.true()}, nullable=False)
     is_deleted: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()}, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None, nullable=True)
@@ -105,7 +102,7 @@ class User(SQLModel, table=True):
             nullable=True,
             index=True
     )   )
-    
+
     # create relationships
     role: Optional[Role] = Relationship(back_populates="users")
     
@@ -440,9 +437,11 @@ class WebhookEvent(SQLModel, table=True):
     )
     processed: bool = Field(default=False, nullable=False)
     processed_at: Optional[datetime] = Field(default=None, nullable=True)
+    processing_error: Optional[str] = Field(default=None, max_length=1000)
+    retry_count: int = Field(default=0, nullable=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) 
 
-    
+
     
     
 

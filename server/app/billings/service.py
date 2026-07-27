@@ -64,8 +64,6 @@ async def reset_credits_if_needed(tenant: Tenant, db: AsyncSession) -> None:
             detail="Subscription plan not found."
         )
 
-    now = datetime.now(timezone.utc)
-
     if tenant.next_credits_reset_at is None:
         should_reset = True
 
