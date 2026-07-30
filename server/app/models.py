@@ -470,19 +470,21 @@ class StripeCheckoutSession(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "stripe_checkout_sessions"
 
     checkout_id: Optional[int] = Field(default=None, primary_key=True)
-    stripe_session_id: str = Field(unique=True, index=True)
+    stripe_session_id: str = Field(unique=True, index=True, nullable=False)
     stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
+    stripe_subscription_id: Optional[str] = Field(default=None, max_length=255, index=True)
     
     # add foreign keys
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
-    # ex., "open", "complete", "expired"
-    status: str = Field(max_length=25)
-    payment_status: str = Field(max_length=75)
+    # ex., "open", "completed", "expired"
+    status: str = Field(default="open", max_length=25)
+    payment_status: str = Field(default=None, max_length=75)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = Field(default=None, nullable=True)
-    expired_at: Optional[datetime] = Field(default=None, nullable=True)
+    completed_at: Optional[datetime] = Field(default=None)
+    expired_at: Optional[datetime] = Field(default=None)
+    updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
     
     # create relationship
     tenant: "Tenant" = Relationship(back_populates="checkout_sessions")

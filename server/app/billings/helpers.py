@@ -328,9 +328,8 @@ async def register_webhook_event(
     """
     Register a Stripe webhook.
 
-    This owns its own transaction so the event
-    is permanently recorded before any business
-    logic starts.
+    Event is permanently recorded before any business
+    logic starts/this handles idempotency registration.
     """
 
     webhook = WebhookEvent(
@@ -385,7 +384,7 @@ async def update_webhook_status(
     """
     Update webhook processing state.
 
-    Does NOT commit.
+    Does NOT commit/records the outcome.
     """
 
     webhook = await get_webhook_event(event_id=event_id, db=db)
