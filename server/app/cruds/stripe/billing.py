@@ -9,7 +9,7 @@ from app.utility.tenant.tenant_router import get_current_tenant
 from app.utility.platform.user import get_current_active_user
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.billings.service import create_checkout_session
+from app.services.stripe.checkout import create_checkout_session
 
 
 

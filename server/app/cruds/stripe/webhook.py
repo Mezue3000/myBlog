@@ -4,7 +4,7 @@ import stripe, os
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.billings.helpers import dispatch_webhook
+from app.services.stripe.dispatcher import dispatch_webhook
 
 
 
