@@ -84,7 +84,6 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
-        index=True,
         nullable=False
     )
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
@@ -169,7 +168,6 @@ class Tenant(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
-        index=True,
         nullable=False
     )
     
@@ -321,15 +319,14 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
     # add foreign key
     project_id: int = Field(foreign_key="api_projects.project_id", nullable=False, index=True)
     
-    key_hash: str = Field(max_length=255, nullable=False, unique=True, index=True)
+    key_hash: str = Field(max_length=255, nullable=False, unique=True, index=False)
     key_prefix: str = Field(max_length=30, nullable=False)
     name: str = Field(max_length=100, nullable=False)
     is_revoked: bool = Field(default=False)
-    revoked_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
+    revoked_by: Optional[int] = Field(default=None, foreign_key="users.user_id", index=True)
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 
         sa_column_kwargs={"server_default": func.now()},
-        index=True,
         nullable=False
     )
 
@@ -342,7 +339,11 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
         sa_relationship_kwargs={"foreign_keys": "[APIKey.revoked_by]"}
     )    
     usage_logs: list["APIUsageLog"] = Relationship(back_populates="api_key")
-     
+    
+    # __table_args__ = (
+    #     Index("ix_apikey_hash", "key_hash", postgresql_using="hash")
+    # )
+
 
 
 
@@ -407,6 +408,7 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     
     # stripe
     stripe_subscription_id: str = Field(max_length=255, unique=True, nullable=False, index=True)
+    stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
     
     status: str = Field(default="active", max_length=20)
     current_period_start: Optional[datetime] = Field(default=None)

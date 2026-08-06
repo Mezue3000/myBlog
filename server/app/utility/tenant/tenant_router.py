@@ -1,6 +1,6 @@
 # import dependencies
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import Tenant, TenantMembership, User, TenantInvitation
+from app.models import Tenant, TenantMembership, User, TenantInvitation, Plan
 from sqlmodel import select, func
 from fastapi import HTTPException, status, Depends, Header, Request
 from app.utility.platform.user import get_current_active_user
@@ -8,6 +8,7 @@ from app.utility.platform.database import get_db
 from typing import Optional
 from uuid import UUID
 import secrets
+from sqlalchemy.orm import selectinload
 from pydantic import EmailStr
 from datetime import datetime, timezone
 from contextvars import ContextVar
@@ -172,25 +173,17 @@ async def get_current_tenant(
             detail="No active tenant selected"
         )
 
-    tenant = await db.get(Tenant, tenant_id)
+    statement = (
+        select(Tenant)
+        .where(Tenant.tenant_id == tenant_id)
+        .options(selectinload(Tenant.plan).selectinload(Plan.features))
+    )
 
-    if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found"
-        )
+    result = await db.exec(statement)
+    tenant = result.scalar_one_or_none()
     
-    if tenant.is_deleted:
-        raise HTTPException(
-           status_code=status.HTTP_410_GONE,
-           detail="Workspace has been deleted"
-        )
-
-    if not tenant.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workspace is suspended"
-        )
+    # ensure tenant is alive
+    validate_tenant(tenant=tenant)
         
     # centralized access validation
     await validate_tenant_access(
@@ -229,7 +222,7 @@ async def get_tenant_membership_by_email(
         select(TenantMembership)
         .join(
             User,
-            User.user_id == TenantMembership.user_id,
+            User.user_id == TenantMembership.user_id
         )
         .where(
             TenantMembership.tenant_id == tenant_id,
@@ -334,7 +327,6 @@ async def count_active_non_owner_members(
 current_tenant_id = ContextVar("current_tenant_id", default=None)
 
 bypass_rls = ContextVar("bypass_rls", default=False)
-
 
 
 

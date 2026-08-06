@@ -14,7 +14,6 @@ logger = get_logger(__name__)
 
 
 
-
  # raised when Stripe retries an already registered event
 class DuplicateWebhookEvent(Exception):
     pass

@@ -5,8 +5,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 import stripe
 from sqlmodel import select
 from fastapi import HTTPException, status
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime, timezone
+from sqlalchemy.orm import selectinload
+from uuid import UUID
+from app.utility.tenant.tenant_router import validate_tenant
 
 
 
@@ -271,9 +274,9 @@ async def update_webhook_status(
     error: Optional[Exception] = None
 ) -> None:
     """
-    Update webhook processing state.
+    update webhook processing state.
 
-    Does NOT commit/records the outcome.
+    does NOT commit/records the outcome.
     """
 
     webhook = await get_webhook_event(event_id=event_id, db=db)
@@ -293,5 +296,204 @@ async def update_webhook_status(
             webhook.processing_error = str(error)[:1000]
 
     db.add(webhook)
+
+    await db.flush()
+
+
+
+
+
+# function to convert raw stripe subscription object into a normalized Python structure.
+def extract_subscription_data(
+    stripe_subscription: dict[str, Any]
+) -> dict[str, Any]:
+    
+    # normalize a stripe subscription object into application fields.
+    items = stripe_subscription.get("items", {}).get("data", [])
+
+    if not items:
+        raise ValueError("Stripe subscription contains no subscription items.")
+
+    price = items[0].get("price")
+
+    if price is None:
+        raise ValueError("Stripe subscription item has no price.")
+
+    return {
+        "stripe_subscription_id": stripe_subscription["id"],
+        "stripe_customer_id": stripe_subscription["customer"],
+        "stripe_price_id": price["id"],
+        "status": stripe_subscription["status"],
+        "current_period_start": datetime.fromtimestamp(
+            stripe_subscription["current_period_start"],
+            tz=timezone.utc
+        ),
+        "current_period_end": datetime.fromtimestamp(
+            stripe_subscription["current_period_end"],
+            tz=timezone.utc
+        ),
+        "cancel_at_period_end": stripe_subscription["cancel_at_period_end"],
+        "cancelled_at": (
+            datetime.fromtimestamp(
+                stripe_subscription["canceled_at"],
+                tz=timezone.utc
+            )
+            if stripe_subscription.get("canceled_at")
+            else None
+        ),
+    }
+
+
+
+
+
+# function to get locked tenant
+async def get_locked_tenant(
+    *,
+    stripe_customer_id: str,
+    db: AsyncSession
+) -> Tenant:
+    """
+    Returns a locked tenant row.
+
+    The row is locked for the lifetime of the current transaction
+    to prevent concurrent webhook handlers from modifying billing data.
+    """
+
+    statement = (
+        select(Tenant)
+        .where(Tenant.stripe_customer_id == stripe_customer_id)
+        .options(selectinload(Tenant.plan))
+        .with_for_update()
+    )
+
+    result = await db.exec(statement)
+    tenant = result.first()
+    
+    validate_tenant(tenant=tenant)
+
+    return tenant
+
+
+
+
+
+# function to get plan by stripe price id
+async def get_plan_by_price_id(
+    *,
+    stripe_price_id: str,
+    db: AsyncSession
+) -> Plan:
+    
+    # returns the plan associated with a Stripe price id
+    statement = (
+        select(Plan)
+        .where(
+            Plan.stripe_price_id == stripe_price_id,
+            Plan.is_active.is_(True)
+        )
+    )
+
+    result = await db.exec(statement)
+    plan = result.first()
+
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription plan not found."
+        )
+
+    return plan
+
+
+
+
+# function to get tenant subscription
+async def get_subscription_by_tenant(
+    *,
+    tenant_id: UUID,
+    db: AsyncSession,
+) -> Subscription | None:
+    
+    # returns the tenant subscription if one exists
+    statement = (
+        select(Subscription)
+        .where(Subscription.tenant_id == tenant_id)
+    )
+
+    result = await db.exec(statement)
+    return result.first()
+
+
+
+
+# function to update or insert subscription
+async def upsert_subscription(
+    *,
+    tenant: Tenant,
+    plan: Plan,
+    subscription_data: dict,
+    db: AsyncSession
+) -> Subscription:
+    
+    """
+    Responsibilities:
+        create if missing
+        otherwise update
+    """
+    # creates or updates the tenant subscription.
+    subscription = await get_subscription_by_tenant(
+        tenant_id=tenant.tenant_id,
+        db=db
+    )
+
+    if subscription is None:
+
+        subscription = Subscription(
+            tenant_id=tenant.tenant_id,
+            plan_id=plan.plan_id,
+            stripe_subscription_id=subscription_data["stripe_subscription_id"],
+            status=subscription_data["status"],
+            current_period_start=subscription_data["current_period_start"],
+            current_period_end=subscription_data["current_period_end"],
+            cancel_at_period_end=subscription_data["cancel_at_period_end"],
+            cancelled_at=subscription_data["cancelled_at"]
+        )
+
+    else:
+        subscription.plan_id = plan.plan_id
+        subscription.stripe_subscription_id = subscription_data["stripe_subscription_id"]
+        subscription.status = subscription_data["status"]
+        subscription.current_period_start = subscription_data["current_period_start"]
+        subscription.current_period_end = subscription_data["current_period_end"]
+        subscription.cancel_at_period_end = subscription_data["cancel_at_period_end"]
+        subscription.cancelled_at = subscription_data["cancelled_at"]
+
+    db.add(subscription)
+    await db.flush()
+
+    return 
+
+
+
+
+# function to update tenant subscription
+async def update_tenant_subscription(
+    *,
+    tenant: Tenant,
+    plan: Plan,
+    subscription: Subscription,
+    db: AsyncSession
+) -> None:
+    """
+    Synchronizes tenant billing information.
+
+    Credit allocation is NOT performed here.
+    """
+
+    tenant.plan_id = plan.plan_id
+    tenant.next_credits_reset_at = subscription.current_period_end
+
+    db.add(tenant)
 
     await db.flush()
