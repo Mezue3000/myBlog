@@ -508,7 +508,7 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
     balance_after: int = Field(nullable=False)
     action: str = Field(max_length=30)
     description: Optional[str] = Field(default=None, max_length=255,)
-    reference_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    reference_id: Optional[str] = Field(default=None, max_length=255, unique=True, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # create relationship

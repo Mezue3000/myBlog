@@ -14,29 +14,45 @@ logger = get_logger(__name__)
 
 
 
- # raised when Stripe retries an already registered event
+ # raised when stripe sends an event that has already been registered
 class DuplicateWebhookEvent(Exception):
     pass
 
 
 
 # function to register stripe webhook
-async def register_webhook_event( 
+async def register_webhook_event(
     *,
     event: dict,
     db: AsyncSession
 ) -> None:
     """
-    Register a Stripe webhook.
+    Permanently register a Stripe webhook event.
 
-    Event is permanently recorded before any business
-    logic starts/this handles idempotency registration.
+    This function establishes the idempotency boundary.
+
+    The webhook event is committed before any business logic
+    begins. Therefore, if business processing later fails, the
+    registration remains in the database.
+
+    The Stripe event ID is unique, so the database provides the
+    final protection against concurrent duplicate deliveries.
     """
 
+    event_id = event.get("id")
+    event_type = event.get("type")
+
+    if not event_id:
+        raise ValueError("Stripe event ID is missing.")
+
+    if not event_type:
+        raise ValueError("Stripe event type is missing.")
+
     webhook = WebhookEvent(
-        stripe_event_id=event["id"],
-        event_type=event["type"],
-        payload=json.dumps(event)
+        stripe_event_id=event_id,
+        event_type=event_type,
+        payload=json.dumps(event),
+        processed=False
     )
 
     db.add(webhook)
@@ -46,6 +62,8 @@ async def register_webhook_event(
 
     except IntegrityError as exc:
         await db.rollback()
+        logger.info("Stripe webhook '%s' has already been registered.", event_id)
+
         raise DuplicateWebhookEvent from exc
 
-    logger.info("Registered Stripe webhook %s.", event["id"])
+    logger.info("Registered Stripe webhook '%s' (%s).", event_id, event_type)

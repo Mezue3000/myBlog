@@ -1,8 +1,8 @@
 # import dependencies
 from app.cores.logging import get_logger
-from app.models import Tenant, User, Plan, Subscription, StripeCheckoutSession, WebhookEvent
+from app.models import Tenant, User, Plan, Subscription, StripeCheckoutSession, WebhookEvent, BillingAudit
 from sqlmodel.ext.asyncio.session import AsyncSession
-import stripe
+import stripe, asyncio
 from sqlmodel import select
 from fastapi import HTTPException, status
 from typing import Optional, Any
@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from app.utility.tenant.tenant_router import validate_tenant
+from sqlalchemy.exc import IntegrityError
 
 
 
@@ -245,7 +246,7 @@ async def ensure_plan_compatible_with_tenant(tenant: Tenant, plan: Plan) -> None
 
 
 
-# function to get webhook event
+# function to retrieve a previously registered stripe webhook event.
 async def get_webhook_event(
     *,
     event_id: str,
@@ -274,29 +275,40 @@ async def update_webhook_status(
     error: Optional[Exception] = None
 ) -> None:
     """
-    update webhook processing state.
+    Update webhook processing state.
 
-    does NOT commit/records the outcome.
+    Does NOT commit.
+    Records the processing outcome in the current transaction.
+
+    processed=True:
+        - Marks the webhook as successfully processed.
+        - Records processed_at.
+        - Clears any previous processing error.
+
+    processed=False:
+        - Increments retry_count.
+        - Records the processing error, if supplied.
     """
 
     webhook = await get_webhook_event(event_id=event_id, db=db)
 
+    # event may have been removed or may not exist.
     if webhook is None:
         return
 
-    webhook.processed = processed
-
     if processed:
+        webhook.processed = True
         webhook.processed_at = datetime.now(timezone.utc)
         webhook.processing_error = None
 
     else:
+        webhook.processed = False
         webhook.retry_count += 1
+        
         if error is not None:
             webhook.processing_error = str(error)[:1000]
 
     db.add(webhook)
-
     await db.flush()
 
 
@@ -328,10 +340,12 @@ def extract_subscription_data(
             stripe_subscription["current_period_start"],
             tz=timezone.utc
         ),
+        
         "current_period_end": datetime.fromtimestamp(
             stripe_subscription["current_period_end"],
             tz=timezone.utc
         ),
+        
         "cancel_at_period_end": stripe_subscription["cancel_at_period_end"],
         "cancelled_at": (
             datetime.fromtimestamp(
@@ -497,3 +511,119 @@ async def update_tenant_subscription(
     db.add(tenant)
 
     await db.flush()
+
+
+
+
+# function to retrieve an existing billing audit by Stripe event id.
+async def get_billing_audit(
+    *,
+    stripe_event_id: str,
+    db: AsyncSession
+) -> Optional[BillingAudit]:
+    
+    statement = (
+        select(BillingAudit)
+        .where(BillingAudit.stripe_event_id == stripe_event_id)
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
+
+
+
+
+
+# function to generate audit record
+async def create_billing_audit(
+    *,
+    tenant_id: UUID,
+    stripe_event_id: str,
+    event_type: str,
+    db: AsyncSession
+) -> BillingAudit:
+    """
+    Create an idempotent billing audit.
+
+    Does not commit.
+
+    Uses a nested transaction so a concurrent unique-key
+    conflict does not roll back the caller's main transaction.
+    """
+
+    if not tenant_id:
+        raise ValueError("Tenant ID is required.")
+
+    if not stripe_event_id:
+        raise ValueError("Stripe event ID is required.")
+
+    if not event_type:
+        raise ValueError("Stripe event type is required.")
+
+    # existing audit
+    existing_audit = await get_billing_audit(stripe_event_id=stripe_event_id, db=db)
+
+    if existing_audit is not None:
+        return existing_audit
+
+    # insert using SAVEPOINT
+    try:
+        async with db.begin_nested():
+            audit = BillingAudit(
+                tenant_id=tenant_id,
+                stripe_event_id=stripe_event_id,
+                event_type=event_type
+            )
+
+            db.add(audit)
+            await db.flush()
+
+        logger.info("Created billing audit for Stripe event '%s'.", stripe_event_id)
+
+        return audit
+
+    except IntegrityError:
+        logger.info(
+            "Billing audit for Stripe event '%s' "
+            "was created concurrently.",
+            stripe_event_id
+        )
+
+        # The nested transaction has rolled back only the
+        # failed INSERT. The caller's transaction remains alive.
+
+        existing_audit = await get_billing_audit(stripe_event_id=stripe_event_id, db=db)
+
+        if existing_audit is None:
+            raise
+
+        return existing_audit
+
+
+
+
+
+# function to retrive stripe subscription
+async def retrieve_stripe_subscription(*, subscription_id: str) -> dict:
+    """
+    Retrieve the complete Stripe Subscription.
+
+    Stripe's SDK call is synchronous, so execute it in a
+    worker thread rather than blocking the async event loop.
+    """
+
+    if not subscription_id:
+        raise ValueError("Stripe subscription ID is required.")
+
+    try:
+        subscription = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
+
+    except stripe.error.StripeError:
+        logger.exception("Failed retrieving Stripe subscription '%s'.", subscription_id)
+        raise
+
+    if not subscription:
+        raise ValueError(f"Stripe subscription '{subscription_id}' was not returned.")
+
+    return subscription

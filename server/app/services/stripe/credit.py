@@ -1,4 +1,5 @@
 # import dependencies
+from app.cores.logging import get_logger
 from app.models import Tenant, Subscription, Plan, CreditLog
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
@@ -6,8 +7,15 @@ from fastapi import HTTPException, status
 from uuid import UUID
 from sqlalchemy.orm import selectinload
 from app.utility.tenant.tenant_router import validate_tenant
+from typing import Optional
+from datetime import datetime, timezone
 
 
+
+
+
+# initialize logging
+logger = get_logger(__name__)
 
 
 
@@ -144,6 +152,155 @@ async def consume_credits(
     await db.flush()
 
     return tenant   
+
+
+
+
+
+# function to retrieve existing credit log
+async def get_credit_log_by_reference(
+    *,
+    tenant_id: UUID,
+    reference_id: str,
+    action: str,
+    db: AsyncSession
+) -> Optional[CreditLog]:
+    """
+    Retrieve an existing credit log using its reference.
+
+    For invoice.paid, reference_id is the Stripe invoice ID.
+
+    The caller owns the transaction.
+    """
+
+    statement = (
+        select(CreditLog)
+        .where(
+            CreditLog.tenant_id == tenant_id,
+            CreditLog.reference_id == reference_id,
+            CreditLog.action == action
+        )
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
+
+
+
+
+
+# function to allocate subscription credits
+async def allocate_invoice_credits(
+    *,
+    tenant: Tenant,
+    subscription: Subscription,
+    invoice_id: str,
+    db: AsyncSession
+) -> None:
+    """
+    Allocate plan credits after a successful Stripe invoice.
+    
+    Idempotency
+    -----------
+    The Stripe invoice ID is stored in CreditLog.reference_id.
+
+    The combination of:
+        tenant_id
+        reference_id
+        action
+    identifies a particular credit allocation.
+
+    Transaction
+    -----------
+    Does NOT commit.
+    The caller owns the transaction.
+    """
+
+    # validate inputs
+    if tenant is None:
+        raise ValueError("Tenant is required.")
+
+    if subscription is None:
+        raise ValueError("Subscription is required.")
+
+    if not invoice_id:
+        raise ValueError("Stripe invoice ID is required.")
+
+    # get subscription plan
+    plan = subscription.plan
+
+    if plan is None:
+        raise ValueError(
+            f"Subscription "
+            f"'{subscription.stripe_subscription_id}' "
+            "has no associated plan."
+        )
+
+    # validate plan credits
+    if plan.credits <= 0:
+        raise ValueError(
+            f"Plan '{plan.name}' has an invalid "
+            f"credit allocation: {plan.credits}."
+        )
+
+    # idempotency check
+    existing_log = await get_credit_log_by_reference(
+        tenant_id=tenant.tenant_id,
+        reference_id=invoice_id,
+        action="subscription_credit",
+        db=db
+    )
+
+    if existing_log is not None:
+        logger.info(
+            "Credits for invoice '%s' have already "
+            "been allocated to tenant '%s'.",
+            invoice_id,
+            tenant.tenant_id
+        )
+
+        return
+    
+    # calculate new balance
+    previous_balance = tenant.credits_remaining
+    allocated_credits = plan.credits
+    new_balance = allocated_credits
+
+    # update tenant balance
+    tenant.credits_remaining = new_balance
+    tenant.next_credits_reset_at = subscription.current_period_end
+
+    db.add(tenant)
+
+    # create credit log
+    credit_log = CreditLog(
+        tenant_id=tenant.tenant_id,
+        amount=allocated_credits,
+        balance_after=new_balance,
+        action="subscription_credit",
+        description=(
+            f"{plan.name} plan credit allocation "
+            f"for invoice {invoice_id}."
+        ),
+        reference_id=invoice_id
+    )
+
+    db.add(credit_log)
+    await db.flush()
+
+    logger.info(
+        "Allocated %s credits to tenant '%s' "
+        "for invoice '%s'. Balance: %s -> %s.",
+        allocated_credits,
+        tenant.tenant_id,
+        invoice_id,
+        previous_balance,
+        new_balance
+    )
+
+
+
 
 
 
