@@ -3,7 +3,7 @@ from app.cores.logging import get_logger
 import stripe
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.services.stripe.idempotency import DuplicateWebhookEvent, register_webhook_event
-from app.utility.stripe.helpers import get_webhook_event, update_webhook_status, retrieve_stripe_subscription, create_billing_audit
+from app.utility.stripe.helpers import get_webhook_event, update_webhook_status, retrieve_stripe_subscription, create_billing_audit, record_payment_failure, get_subscription_by_stripe_id
 from app.services.stripe.sync import sync_subscription_from_stripe
 from app.services.stripe.credit import allocate_invoice_credits
 
@@ -53,10 +53,7 @@ async def handle_invoice_paid(
         raise ValueError("Stripe event ID is missing.")
 
     if event_type != "invoice.paid":
-        raise ValueError(
-            f"Invalid event type '{event_type}'. "
-            "Expected 'invoice.paid'."
-        )
+        raise ValueError(f"Invalid event type '{event_type}'. Expected 'invoice.paid'.")
 
     # register webhook
     try:
@@ -78,7 +75,7 @@ async def handle_invoice_paid(
 
             return
 
-        # Previously registered but failed, continue processing.
+        # previously registered but failed, continue processing.
         logger.warning(
             "Retrying previously failed invoice.paid "
             "event '%s'. Retry count=%s.",
@@ -196,6 +193,178 @@ async def handle_invoice_paid(
             await db.rollback()
             logger.exception(
                 "Failed recording invoice.paid failure "
+                "for webhook '%s'.",
+                event_id
+            )
+
+        raise
+
+
+
+
+
+# invoice-failed webhook handler
+async def handle_invoice_payment_failed(
+    *,
+    event: dict,
+    db: AsyncSession
+) -> None:
+    """
+    Handle Stripe invoice.payment_failed webhook.
+
+    Responsibilities
+    ----------------
+    1. Register webhook event.
+    2. Handle duplicate events correctly.
+    3. Validate invoice.
+    4. Resolve the local subscription.
+    5. Record the payment failure.
+    6. Create billing audit.
+    7. Mark webhook as processed.
+    8. Commit the transaction.
+
+    Important
+    ---------
+    A failed invoice does NOT automatically cancel or downgrade
+    the subscription. Stripe may retry the payment.
+    """
+
+    # validate event
+    event_id = event.get("id")
+    event_type = event.get("type")
+
+    if not event_id:
+        raise ValueError("Stripe event ID is missing.")
+
+    if event_type != "invoice.payment_failed":
+        raise ValueError(f"Invalid event type '{event_type}' Expected 'invoice.payment_failed'.")
+
+    # register webhook
+    try:
+        await register_webhook_event(event=event, db=db)
+
+    except DuplicateWebhookEvent:
+        logger.info("Stripe webhook '%s' already registered.", event_id)
+        
+        webhook = await get_webhook_event(event_id=event_id, db=db)
+
+        if webhook is None:
+            raise RuntimeError(f"Webhook '{event_id}' was reported as duplicate but could not be found.")
+
+        # already successfully processed
+        if webhook.processed:
+            logger.info("Stripe webhook '%s' already processed.", event_id)
+
+            return
+
+        # previously failed continue and retry processing.
+        logger.warning(
+            "Retrying previously failed "
+            "invoice.payment_failed event '%s'. "
+            "Retry count=%s.",
+            event_id,
+            webhook.retry_count
+        )
+
+    # process invoice
+    try:
+        invoice = (
+            event.get("data", {})
+            .get("object")
+        )
+
+        if not invoice:
+            raise ValueError("Stripe invoice payload is missing.")
+
+        # validate invoice
+        invoice_id = invoice.get("id")
+
+        if not invoice_id:
+            raise ValueError("Stripe invoice ID is missing.")
+
+        customer_id = invoice.get("customer")
+
+        if not customer_id:
+            raise ValueError(f"Invoice '{invoice_id}' has no Stripe customer.")
+
+        subscription_id = invoice.get("subscription")
+
+        if not subscription_id:
+            raise ValueError(f"Invoice '{invoice_id}' is not associated with a Stripe subscription.")
+
+        # resolve local subscription
+        subscription = await get_subscription_by_stripe_id(stripe_subscription_id=subscription_id, db=db)
+
+        if subscription is None:
+            raise ValueError(f"No local subscription exists for Stripe subscription '{subscription_id}'.")
+
+        # verify tenant
+        tenant = subscription.tenant
+
+        if tenant is None:
+            raise ValueError(f"Subscription '{subscription_id}' has no associated tenant.")
+
+        # verify Stripe customer
+        if tenant.stripe_customer_id != customer_id:
+            raise ValueError(f"Stripe customer mismatch for invoice '{invoice_id}'.")
+
+        # record payment failure
+        await record_payment_failure(
+            subscription=subscription,
+            invoice_id=invoice_id,
+            db=db
+        )
+
+        # create billing audit
+        await create_billing_audit(
+            tenant_id=tenant.tenant_id,
+            stripe_event_id=event_id,
+            event_type=event_type,
+            db=db
+        )
+
+        # mark webhook processed
+        await update_webhook_status(
+            event_id=event_id,
+            processed=True,
+            db=db
+        )
+
+        # commit
+        await db.commit()
+
+        logger.info(
+            "Successfully processed invoice.payment_failed "
+            "event '%s' for invoice '%s'.",
+            event_id,
+            invoice_id
+        )
+
+    except Exception as exc:
+        logger.exception(
+            "Failed processing invoice.payment_failed "
+            "event '%s'.",
+            event_id
+        )
+
+        # roll back business transaction
+        await db.rollback()
+
+        # persist failure state
+        try:
+            await update_webhook_status(
+                event_id=event_id,
+                processed=False,
+                error=exc,
+                db=db
+            )
+
+            await db.commit()
+
+        except Exception:
+            await db.rollback()
+            logger.exception(
+                "Failed recording processing failure "
                 "for webhook '%s'.",
                 event_id
             )

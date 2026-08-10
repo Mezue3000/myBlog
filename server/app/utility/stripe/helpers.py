@@ -627,3 +627,80 @@ async def retrieve_stripe_subscription(*, subscription_id: str) -> dict:
         raise ValueError(f"Stripe subscription '{subscription_id}' was not returned.")
 
     return subscription
+
+
+
+
+
+
+# function to record payment failure
+async def record_payment_failure(
+    *,
+    subscription: Subscription,
+    invoice_id: str,
+    db: AsyncSession
+) -> None:
+    """
+    Record a failed stripe invoice payment.
+
+    This function updates the local subscription state.
+
+    It does not commit.
+
+    The caller owns the transaction.
+    """
+
+    if subscription is None:
+        raise ValueError("Subscription is required.")
+
+    if not invoice_id:
+        raise ValueError("Stripe invoice ID is required.")
+
+    # no need to cancel/downgrade the
+    # subscription here. Stripe may retry the payment.
+    logger.warning(
+        "Payment failed for subscription '%s', "
+        "invoice '%s'.",
+        subscription.stripe_subscription_id,
+        invoice_id,
+    )
+
+    # Keep the subscription status synchronized with
+    # Stripe when the status is available.
+    
+    # invoice.payment_failed itself does not necessarily
+    # mean the subscription has been canceled.
+
+    subscription.updated_at = datetime.now(timezone.utc)
+
+    db.add(subscription)
+    await db.flush()
+    
+    
+    
+    
+
+# fuction to get sub. by stripe_id
+async def get_subscription_by_stripe_id(
+    *,
+    stripe_subscription_id: str,
+    db: AsyncSession,
+) -> Optional[Subscription]:
+    """
+    Retrieve a local subscription using its Stripe
+    subscription ID.
+
+    Does NOT commit.
+    """
+
+    if not stripe_subscription_id:
+        raise ValueError("Stripe subscription ID is required.")
+
+    statement = (
+        select(Subscription)
+        .where(Subscription.stripe_subscription_id == stripe_subscription_id)
+    )
+
+    result = await db.exec(statement)
+
+    return result.first()
