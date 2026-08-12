@@ -203,7 +203,7 @@ async def handle_invoice_paid(
 
 
 
-# invoice-failed webhook handler
+# invoice-payment-failed webhook handler
 async def handle_invoice_payment_failed(
     *,
     event: dict,
@@ -225,7 +225,7 @@ async def handle_invoice_payment_failed(
 
     Important
     ---------
-    A failed invoice does NOT automatically cancel or downgrade
+    A failed invoice does not automatically cancel or downgrade
     the subscription. Stripe may retry the payment.
     """
 

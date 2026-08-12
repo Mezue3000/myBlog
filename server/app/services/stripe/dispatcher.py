@@ -2,6 +2,10 @@
 from app.cores.logging import get_logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 import stripe
+from app.services.stripe.checkout import handle_checkout_completed
+from app.services.stripe.invoice import handle_invoice_paid, handle_invoice_payment_failed
+from app.services.stripe.subscription import handle_subscription_updated, handle_subscription_deleted
+ 
 
 
 
@@ -14,11 +18,11 @@ logger = get_logger(__name__)
 
 # function to route stripe events
 EVENT_HANDLERS = {
-#     "checkout.session.completed": handle_checkout_completed,
-#     "invoice.paid": handle_invoice_paid,
-#     "invoice.payment_failed": handle_invoice_payment_failed,
-#     "customer.subscription.updated": handle_subscription_updated,
-#     "customer.subscription.deleted": handle_subscription_deleted,
+    "checkout.session.completed": handle_checkout_completed,
+    "invoice.paid": handle_invoice_paid,
+    "invoice.payment_failed": handle_invoice_payment_failed,
+    "customer.subscription.updated": handle_subscription_updated,
+    "customer.subscription.deleted": handle_subscription_deleted
 }
 
 

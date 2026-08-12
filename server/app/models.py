@@ -150,7 +150,7 @@ class Tenant(SQLModel, table=True):
     
     # add foreign keys
     owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
-    plan_id: int = Field(foreign_key="plans.plan_id", index=True)
+    plan_id: int = Field(default=None, foreign_key="plans.plan_id", index=True)
     deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     slug: str = Field(max_length=100, unique=True)

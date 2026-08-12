@@ -6,7 +6,7 @@ import stripe, asyncio
 from sqlmodel import select
 from fastapi import HTTPException, status
 from typing import Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from app.utility.tenant.tenant_router import validate_tenant
@@ -704,3 +704,106 @@ async def get_subscription_by_stripe_id(
     result = await db.exec(statement)
 
     return result.first()
+
+
+
+
+
+# function to get tenanat active free plan
+async def get_free_plan(
+    *,
+    db: AsyncSession
+) -> Plan:
+    """
+    Return the active Free plan.
+
+    The Free plan is expected to be globally unique.
+    """
+
+    statement = (
+        select(Plan)
+        .where(
+            Plan.name == "free",
+            Plan.is_active.is_(True)
+        )
+    )
+
+    result = await db.exec(statement)
+
+    plan = result.first()
+
+    if plan is None:
+        raise RuntimeError("Active Free plan is not configured. ")
+
+    return plan
+
+
+
+
+
+# function to cancel Subscription
+async def handle_subscription_cancellation(
+    *,
+    tenant: Tenant,
+    subscription: Subscription,
+    stripe_subscription: dict,
+    db: AsyncSession
+) -> None:
+    """
+    Apply local business rules after Stripe confirms
+    that a subscription has been deleted.
+
+    Personal tenants:
+        Paid plan -> Free plan.
+
+    Team tenants:
+        Paid subscription ends -> no Free Team plan exists.
+        Therefore the tenant remains, but its paid subscription
+        is no longer active.
+    
+    Headless Api:
+       Paid plan -> Free plan.
+       
+    This function does not commit.
+    """
+
+    tenant_type = tenant.type
+
+    # personal tenant
+    if tenant_type == "personal":
+        free_plan = await get_free_plan(db=db)
+        
+        tenant.plan_id = free_plan.plan_id
+        tenant.credits_remaining = free_plan.credit_limit
+        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
+
+        db.add(tenant)
+
+    # team tenant
+    elif tenant_type == "team":
+
+        # A Team tenant has no Free plan.
+        #
+        # Do NOT set tenant.plan_id to a nonexistent
+        # Free Team plan.
+        #
+        # The subscription has already been synchronized
+        # with Stripe and should now have a terminal status.
+
+        tenant.plan_id = None
+        db.add(tenant)
+
+    # headless API tenant
+    elif tenant_type == "headless_api":
+        free_plan = await get_free_plan(db=db)
+                
+        tenant.plan_id = free_plan.plan_id
+        tenant.credits_remaining = free_plan.credit_limit
+        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
+
+        db.add(tenant)
+
+    else:
+        raise ValueError(f"Unsupported tenant type: {tenant_type}")
+
+    await db.flush()
