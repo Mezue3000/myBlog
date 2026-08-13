@@ -29,7 +29,8 @@ from app.cores.middleware import(
 
 from app.cores.exceptions import (
     http_exception_handler,
-    unhandled_exception_handler
+    unhandled_exception_handler,
+    value_error_handler
 )
 
 from app.cruds.platform import users
@@ -144,6 +145,7 @@ app.state.limiter = limiter
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(ValueError, value_error_handler)
 
 
 

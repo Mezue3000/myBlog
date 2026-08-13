@@ -138,12 +138,8 @@ async def get_active_plan(plan_id: int, db: AsyncSession) -> Plan:
 
     if not plan:
         logger.warning("Plan %s not found or inactive.", plan_id)
-
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Plan not found."
-        )
-
+        raise ValueError("Plan not found.")
+    
     return plan
 
 
@@ -176,11 +172,7 @@ async def ensure_no_active_subscription(
                tenant.tenant_id
             )
 
-           raise HTTPException(
-               status_code=status.HTTP_409_CONFLICT,
-               detail="Tenant already has an active subscription."
-            )
-
+           raise ValueError("Tenant already has an active subscription.")
 
 
 
@@ -234,12 +226,9 @@ async def ensure_plan_compatible_with_tenant(tenant: Tenant, plan: Plan) -> None
             plan.plan_id
         )
 
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                f"This {plan.name} plan is only available "
-                f"for {plan.tenant_type} workspaces."
-            ),
+        raise ValueError(
+            f"This {plan.name} plan is only available "
+            f"for {plan.tenant_type} workspaces."
         )
 
 
@@ -412,10 +401,7 @@ async def get_plan_by_price_id(
     plan = result.first()
 
     if plan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription plan not found."
-        )
+        raise ValueError("Subscription plan not found.")
 
     return plan
 

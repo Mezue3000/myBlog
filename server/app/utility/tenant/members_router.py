@@ -150,12 +150,9 @@ async def ensure_team_has_capacity(
     )
 
     if remaining_slots <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "This workspace has reached the maximum number "
-                "of members allowed by its current subscription."
-            )
+        raise ValueError(
+            "This workspace has reached the maximum number "
+            "of members allowed by its current subscription."
         )
 
     return remaining_slots

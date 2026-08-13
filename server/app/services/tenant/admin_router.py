@@ -50,10 +50,7 @@ async def invite_members_service(
     try:
         # personal tenants cannot invite
         if tenant.type == "personal":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Personal workspace cannot invite members. Please upgrade to a team plan."
-            )
+            raise ValueError("Personal workspace cannot invite members. Please upgrade to a team plan.")
 
         # RBAC
         membership = await get_tenant_membership(
@@ -66,26 +63,17 @@ async def invite_members_service(
             membership is None
             or membership.role not in ["owner", "admin"]
         ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners and admins can invite members."
-            )
+            raise ValueError("Only owners and admins can invite members.")
 
         # validate request
         if not emails:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one email is required.",
-            )
+            raise ValueError("At least one email is required.")
 
         if len(emails) > MAX_INVITATIONS_PER_REQUEST:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Maximum of "
-                    f"{MAX_INVITATIONS_PER_REQUEST} "
-                    "emails per request."
-                ),
+            raise ValueError(
+                f"Maximum of "
+                f"{MAX_INVITATIONS_PER_REQUEST} "
+                "emails per request."  
             )
 
         normalized_emails = {
@@ -258,10 +246,7 @@ async def delete_member_service(
         )
         
         if target_membership.is_deleted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Member is already deleted"
-            )
+            raise ValueError("Member is already deleted")
 
         # soft delete membership
         target_membership.is_deleted = True
@@ -301,10 +286,7 @@ async def delete_member_service(
             f"Database error deleting member "
             f"{member_id}: {str(e)}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
+        raise ValueError("Database error")
 
     except Exception as e:
         await db.rollback()
@@ -312,11 +294,7 @@ async def delete_member_service(
             f"Unexpected error deleting "
             f"member {member_id}: {str(e)}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete member"
-        )
-        
+        raise ValueError("Failed to delete member")
         
         
         
@@ -337,10 +315,7 @@ async def request_delete_tenant_otp(
     
     # personal workspace cannot be deleted
     if tenant.type == "personal":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Personal workspace cannot be deleted"
-        )
+        raise ValueError("Personal workspace cannot be deleted")
 
     # ensure all members are removed
     remaining_members = await count_active_non_owner_members(
@@ -350,10 +325,7 @@ async def request_delete_tenant_otp(
     )
 
     if remaining_members > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="delete all members before deleting the workspace."
-        )
+        raise ValueError("delete all members before deleting the workspace.")
 
     # generate OTP
     otp = await create_email_otp(
@@ -430,10 +402,7 @@ async def delete_tenant_service(
             f"Database error deleting tenant "
             f"{tenant.tenant_id}: {e}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
+        raise ValueError("Database error")
 
     except Exception as e:
         await db.rollback()
@@ -441,10 +410,7 @@ async def delete_tenant_service(
             f"Failed to delete tenant "
             f"{tenant.tenant_id}: {e}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete tenant"
-        )
+        raise ValueError("Failed to delete tenant")
 
 
 
@@ -478,10 +444,7 @@ async def deactivate_member_service(
         )
         
         if not target_membership.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Member is already inactive"
-            )
+            raise ValueError("Member is already inactive")
 
         target_membership.is_active = False
         
@@ -522,19 +485,11 @@ async def deactivate_member_service(
             },
             exc_info=True
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
-
+        raise ValueError("Database error")
     except Exception as e:
         await db.rollback()
         logger.exception(f"Failed to deactivate member: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to deactivate member"
-        )
-        
+        raise ValueError("Failed to deactivate member")
         
         
         
@@ -554,10 +509,7 @@ async def activate_member_service(
         )
 
         if member_id == current_user.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot activate yourself"
-            )
+            raise ValueError("You cannot activate yourself")
         
         target_membership = await validate_tenant_role_hierarchy(
             actor_user_id=current_user.user_id,
@@ -567,10 +519,7 @@ async def activate_member_service(
         )
             
         if target_membership.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Member is already active"
-            )
+            raise ValueError("Member is already active")
 
         target_membership.is_active = True
         
@@ -616,15 +565,9 @@ async def activate_member_service(
             },
             exc_info=True
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
-
+        raise ValueError("Database error")
+    
     except Exception as e:
         await db.rollback()
         logger.exception(f"Failed to activate member: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to activate member"
-        )
+        raise ValueError("Failed to activate member")

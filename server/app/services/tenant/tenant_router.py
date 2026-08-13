@@ -66,18 +66,12 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
     except SQLAlchemyError as e:
         await db.rollback()
         logger.error(f"Database error creating tenant: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
+        raise ValueError("Database error")
 
     except Exception as e:
         await db.rollback()
         logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong"
-        )
+        raise ValueError("Something went wrong")
         
         
         
@@ -102,10 +96,7 @@ async def get_tenants_service( current_user: User, db: AsyncSession):
 
     except Exception as e:
         logger.error(f"Error fetching tenants: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Failed to fetch tenants"
-        ) 
+        raise ValueError("Failed to fetch tenants")
         
         
         
@@ -165,17 +156,14 @@ async def switch_tenant_service(
 
         logger.error(f"Database error switching tenant: {str(e)}")
 
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
+        raise ValueError("Database error")
 
     except Exception as e:
         await db.rollback()
 
         logger.error(f"Unexpected error switching tenant: {str(e)}")
 
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Something went wrong")
+        raise ValueError("Something went wrong")
     
     
     

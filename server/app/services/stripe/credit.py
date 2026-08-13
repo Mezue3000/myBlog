@@ -126,9 +126,8 @@ async def consume_credits(
     await reset_credits_if_needed(tenant=tenant, db=db)
 
     if tenant.credits_remaining < cost:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
+        raise ValueError(
+            {
                 "error": "insufficient_credits",
                 "credits_remaining": tenant.credits_remaining,
                 "credits_required": cost

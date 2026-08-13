@@ -41,26 +41,17 @@ async def validate_tenant_role_hierarchy(
     )
 
     if not actor_membership:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Actor membership not found"
-        )
+        raise ValueError("Actor membership not found")
 
     if not target_membership:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target membership not found"
-        )
+        raise ValueError("Target membership not found")
 
     actor_level = ROLE_PRIORITY.get(actor_membership.role, 0)
 
     target_level = ROLE_PRIORITY.get(target_membership.role, 0)
 
     if actor_level <= target_level:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You cannot modify a member with equal or higher privileges"
-        )
+        raise ValueError("You cannot modify a member with equal or higher privileges")
 
     return target_membership
 

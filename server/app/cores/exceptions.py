@@ -1,5 +1,5 @@
 # import dependencies
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from app.cores.logging import get_logger
@@ -47,4 +47,34 @@ async def unhandled_exception_handler(
     return JSONResponse(
         status_code=HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error"}
+    )
+
+
+
+
+
+# global ValueError handler
+async def value_error_handler(
+    request: Request,
+    exc: ValueError
+):
+    logger.warning(
+        "value_error",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "error": str(exc),
+            "client_ip": (
+                request.client.host
+                if request.client
+                else None
+            ),
+        },
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": "Invalid value provided."
+        },
     )

@@ -217,10 +217,7 @@ async def update_user_info(
              extra={"user_id": current_user.user_id},
         )
 
-        raise HTTPException(
-            status_code=400,
-            detail="Integrity error while updating user."
-        )
+        raise ValueError("Integrity error while updating user.")
 
     return current_user
  
@@ -272,10 +269,7 @@ async def change_password(
             extra={"user_id": current_user.user_id},
         )
 
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password update violates database constraints",
-        )
+        raise ValueError("Password update violates database constraints")
 
     except SQLAlchemyError:
         await db.rollback()
@@ -284,10 +278,7 @@ async def change_password(
              extra={"user_id": current_user.user_id},
         )
 
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected database error occurred",
-        )
+        raise ValueError("An unexpected database error occurred")
     
     # logout all devices
     await logout_all_devices_for_user(current_user.user_id)
@@ -381,11 +372,8 @@ async def finalize_email_update(
         await db.refresh(current_user)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Integrity error while updating user."
-        )
-        
+        raise ValueError("Integrity error while updating user.")
+    
     return{"detail": "Email updated succesfully"} 
 
 
@@ -497,9 +485,6 @@ async def delete_user_account(
 
     except SQLAlchemyError as e:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user.",
-        ) from e
+        raise ValueError("Failed to delete user.") from e
 
     return {"detail": "Account deleted successfully."}

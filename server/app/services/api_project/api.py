@@ -82,18 +82,12 @@ async def create_headless_api_service(
     except SQLAlchemyError as e:
         await db.rollback()
         logger.error(f"Database error creating API workspace: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error"
-        )
+        raise ValueError("Database error")
 
     except Exception as e:
         await db.rollback()
         logger.error(f"Unexpected error creating API workspace: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong"
-        )
+        raise ValueError("Something went wrong")
     
     
     

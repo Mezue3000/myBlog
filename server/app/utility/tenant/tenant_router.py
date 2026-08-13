@@ -32,10 +32,7 @@ async def get_personal_tenant(user_id: int, db: AsyncSession) -> Tenant:
     tenant = result.first()
     
     if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Personal workspace not found"
-        )
+        raise ValueError("Personal workspace not found")
     
     return tenant
 
@@ -50,7 +47,7 @@ async def validate_tenant_uniqueness(name: str, db: AsyncSession):
     existing_tenant = db.exec(statement).first()
 
     if existing_tenant:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant name already exists")
+        raise ValueError("Tenant name already exists")
     
     
     
@@ -132,11 +129,8 @@ async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSe
     # personal tenant
     if tenant.type == "personal":
         if tenant.owner_id != current_user.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to personal tenant"
-            )
-
+            raise ValueError("Access denied to personal tenant")
+        
         return True
 
     # team/api tenants
@@ -147,11 +141,8 @@ async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSe
     )
 
     if not membership:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to tenant"
-        )
-
+        raise ValueError("Access denied to tenant")
+    
     return True
 
 
@@ -278,22 +269,13 @@ async def get_invitation_by_token(
 def validate_tenant(tenant: Tenant):
     
     if tenant is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found."
-        )
-
+        raise ValueError("Workspace not found.")
+    
     if tenant.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="Workspace deleted."
-        )
-
+        raise ValueError("Workspace deleted.")
+    
     if not tenant.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workspace suspended."
-        )
+        raise ValueError("Workspace suspended.")
 
 
 
@@ -356,9 +338,6 @@ async def lock_tenant(tenant_id: UUID, db: AsyncSession) -> Tenant:
     tenant = result.first()
 
     if tenant is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found."
-        )
+        raise ValueError("Tenant not found.")
 
     return tenant

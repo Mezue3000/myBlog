@@ -50,10 +50,7 @@ async def accept_invitation_service(
 
         if invitation is None:
             logger.warning("Invitation not found", extra={"token": token})
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation not found."
-            )
+            raise ValueError("Invitation not found.")
 
         now = datetime.now(timezone.utc)
 
@@ -63,28 +60,18 @@ async def accept_invitation_service(
             and invitation.expires_at < now
         ):
             logger.warning("Invitation expired", extra={"token": token})
-
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE,
-                detail="Invitation has expired."
-            )
+            raise ValueError("Invitation has expired.")
 
         # already accepted?
         if invitation.is_accepted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invitation already accepted."
-            )
+            raise ValueError("Invitation already accepted.")
 
         # email mismatch?
         if (
             invitation.email.lower()
             != current_user.email.lower()
         ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invitation belongs to another user."
-            )
+            raise ValueError("Invitation belongs to another user.")
 
         # already a member?
         existing_membership = await get_tenant_membership(
@@ -94,10 +81,7 @@ async def accept_invitation_service(
         )
 
         if existing_membership:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Already a member."
-            )
+            raise ValueError("Already a member.")
 
         # lock tenant
         tenant = await lock_tenant(tenant_id=invitation.tenant_id, db=db)
@@ -147,10 +131,7 @@ async def accept_invitation_service(
     except Exception:
         await db.rollback()
         logger.exception("Unexpected error accepting invitation.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to accept invitation."
-        )
+        raise ValueError("Failed to accept invitation.")
 
 
         
@@ -178,27 +159,18 @@ async def register_invited_member(
     invitation = await get_invitation_by_token(token=token, db=db)
 
     if invitation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invitation not found."
-        )
+        raise ValueError("Invitation not found.")
 
     now = datetime.now(timezone.utc)
 
     if invitation.is_accepted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invitation has already been accepted."
-        )
+        raise ValueError("Invitation has already been accepted.")
 
     if (
         invitation.expires_at is not None
         and invitation.expires_at < now
     ):
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="Invitation has expired."
-        )
+        raise ValueError("Invitation has expired.")
 
     email = invitation.email.lower()
 
@@ -254,19 +226,12 @@ async def register_invited_member(
     except IntegrityError:
         await db.rollback()
         logger.exception("Integrity error creating invited user.")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unable to create account."
-        )
+        raise ValueError("Unable to create account.")
 
     except Exception:
         await db.rollback()
         logger.exception("Failed creating invited user.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed."    
-        )
-
+        raise ValueError("Registration failed.")
 
 
 
@@ -284,10 +249,7 @@ async def register_invited_member(
         invitation = await get_invitation_by_token(token=token, db=db)
 
         if invitation is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation no longer exists."
-            )
+            raise ValueError("Invitation no longer exists.")
 
         await accept_workspace_invitation(
             invitation=invitation,

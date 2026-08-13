@@ -54,10 +54,7 @@ async def get_project_by_tenant(
     project = result.first()
 
     if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
-        )
+        raise ValueError("Project not found")
 
     return project
 
@@ -79,10 +76,7 @@ async def get_current_project(
     )
 
     if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
-        )
+        raise ValueError("Project not found")
 
     return project
 
@@ -106,11 +100,7 @@ async def validate_project_uniqueness(
     project = result.first()
 
     if project:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Project already exists"
-        )
-
+        raise ValueError("Project already exists")
 
 
 
@@ -119,22 +109,13 @@ async def validate_project_uniqueness(
 def validate_project(project: ApiProject):
     
     if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found."
-        )
+        raise ValueError("Project not found.")
 
     if project.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="Project deleted."
-        )
-
+        raise ValueError("Project deleted.")
+    
     if not project.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Project deactivated."
-        )
+        raise ValueError("Project deactivated.")
 
 
 
@@ -218,22 +199,13 @@ def validate_api_key_format(api_key: str) -> str:
     api_key = api_key.strip()
 
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required."
-        )
+        raise ValueError("API key required.")
 
     if not api_key.startswith("fk_live_"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key."
-        )
+        raise ValueError("Invalid API key.")
 
     if len(api_key) < 32:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key."
-        )
+        raise ValueError("Invalid API key.")
 
     return api_key
 
@@ -269,32 +241,19 @@ async def get_api_key_by_hash(
 def validate_api_key(api_key: APIKey):
     
     if api_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key."
-        )
+        raise ValueError("Invalid API key.")
 
     if api_key.is_revoked:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API key revoked."
-        )
-
+        raise ValueError("API key revoked.")
+    
     if not api_key.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API key disabled."
-        )
+        raise ValueError("API key disabled.")
 
     if (
         api_key.expires_at
         and api_key.expires_at <= datetime.now(timezone.utc)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="API key expired."
-        )
-
+        raise ValueError("API key expired.")
 
 
 

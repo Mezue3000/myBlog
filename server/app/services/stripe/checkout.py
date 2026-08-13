@@ -148,11 +148,8 @@ async def handle_checkout_completed(
 
         # validate payload
         if session.get("mode") != "subscription":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unexpected checkout mode."
-            )
-
+            raise ValueError("Unexpected checkout mode.")
+        
         tenant_id = session.get("client_reference_id")
 
         stripe_customer_id = session.get("customer")
@@ -169,10 +166,7 @@ async def handle_checkout_completed(
                 stripe_subscription_id
             ]
         ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incomplete checkout session."
-            )
+            raise ValueError("Incomplete checkout session.")
 
         # lock tenant
         statement = (
@@ -212,10 +206,7 @@ async def handle_checkout_completed(
         checkout = result.first()
 
         if checkout is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Checkout session not found."
-            )
+            raise ValueError("Checkout session not found.")
 
         # update checkout
         checkout.status = "complete"
