@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.services.stripe.idempotency import DuplicateWebhookEvent, register_webhook_event
 from app.utility.stripe.helpers import get_webhook_event, update_webhook_status, retrieve_stripe_subscription, create_billing_audit, record_payment_failure, get_subscription_by_stripe_id
 from app.services.stripe.sync import sync_subscription_from_stripe
-from app.services.stripe.credit import allocate_invoice_credits
+from app.services.stripe.credit import allocate_paid_plan_credits
 
 
 
@@ -139,11 +139,10 @@ async def handle_invoice_paid(
                 f"'{invoice_id}'."
             )
 
-        # allocate credits
-        await allocate_invoice_credits(
+        # allocate paid credits
+        await allocate_paid_plan_credits(
             tenant=tenant,
             subscription=subscription,
-            invoice_id=invoice_id,
             db=db
         )
 
@@ -168,8 +167,7 @@ async def handle_invoice_paid(
         logger.info(
             "Successfully processed invoice.paid "
             "event '%s' for invoice '%s'.",
-            event_id,
-            invoice_id
+            event_id
         )
 
     except Exception as exc:

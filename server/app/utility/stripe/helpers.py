@@ -648,7 +648,7 @@ async def record_payment_failure(
         "Payment failed for subscription '%s', "
         "invoice '%s'.",
         subscription.stripe_subscription_id,
-        invoice_id,
+        invoice_id
     )
 
     # Keep the subscription status synchronized with
@@ -670,7 +670,7 @@ async def record_payment_failure(
 async def get_subscription_by_stripe_id(
     *,
     stripe_subscription_id: str,
-    db: AsyncSession,
+    db: AsyncSession
 ) -> Optional[Subscription]:
     """
     Retrieve a local subscription using its Stripe
@@ -696,30 +696,40 @@ async def get_subscription_by_stripe_id(
 
 
 # function to get tenanat active free plan
-async def get_free_plan(
+async def get_plan_for_tenant_type(
     *,
+    tenant_type: str,
+    plan_name: str,
     db: AsyncSession
 ) -> Plan:
     """
-    Return the active Free plan.
+    Get an active plan for a specific tenant type.
 
-    The Free plan is expected to be globally unique.
+    Example:
+        personal + free
+        team + pro
+        team + enterprise
+        headless_api + pro
     """
 
     statement = (
         select(Plan)
         .where(
-            Plan.name == "free",
+            Plan.name == plan_name,
+            Plan.tenant_type == tenant_type,
             Plan.is_active.is_(True)
         )
     )
 
     result = await db.exec(statement)
-
+    
     plan = result.first()
 
     if plan is None:
-        raise RuntimeError("Active Free plan is not configured. ")
+        raise RuntimeError(
+            f"Active '{plan_name}' plan is not configured "
+            f"for tenant type '{tenant_type}'."
+        )
 
     return plan
 
@@ -740,16 +750,15 @@ async def handle_subscription_cancellation(
     that a subscription has been deleted.
 
     Personal tenants:
-        Paid plan -> Free plan.
+        Paid plan -> Free personal plan.
 
     Team tenants:
-        Paid subscription ends -> no Free Team plan exists.
-        Therefore the tenant remains, but its paid subscription
-        is no longer active.
-    
-    Headless Api:
-       Paid plan -> Free plan.
-       
+        Paid subscription ends -> no Free Team plan.
+        Therefore plan_id becomes None.
+
+    Headless API tenants:
+        Paid plan -> Free headless_api plan.
+
     This function does not commit.
     """
 
@@ -757,38 +766,45 @@ async def handle_subscription_cancellation(
 
     # personal tenant
     if tenant_type == "personal":
-        free_plan = await get_free_plan(db=db)
-        
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="personal",
+            plan_name="free",
+            db=db
+        )
+
         tenant.plan_id = free_plan.plan_id
         tenant.credits_remaining = free_plan.credit_limit
-        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
+
+        # the free credit countdown should start when tenant actually exhausts the credits.
+        tenant.next_credits_reset_at = None
 
         db.add(tenant)
 
     # team tenant
     elif tenant_type == "team":
-
-        # A Team tenant has no Free plan.
-        #
-        # Do NOT set tenant.plan_id to a nonexistent
-        # Free Team plan.
-        #
-        # The subscription has already been synchronized
-        # with Stripe and should now have a terminal status.
-
+        
+        # team tenants have no Free plan by design.
         tenant.plan_id = None
-        db.add(tenant)
+        tenant.credits_remaining = 0
+        tenant.next_credits_reset_at = None
 
+        db.add(tenant)
+    
     # headless API tenant
     elif tenant_type == "headless_api":
-        free_plan = await get_free_plan(db=db)
-                
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="headless_api",
+            plan_name="free",
+            db=db
+        )
+
         tenant.plan_id = free_plan.plan_id
         tenant.credits_remaining = free_plan.credit_limit
-        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
+        tenant.next_credits_reset_at = None
 
         db.add(tenant)
 
+    # unsupported tenant type
     else:
         raise ValueError(f"Unsupported tenant type: {tenant_type}")
 

@@ -16,10 +16,8 @@ from app.utility.platform.database import async_engine
 
 
 
-
 # initialize logging
 logger = get_logger(__name__)
-
 
 
 
@@ -72,8 +70,8 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         await db.rollback()
         logger.error(f"Unexpected error: {str(e)}")
         raise ValueError("Something went wrong")
-        
-        
+
+       
         
         
         

@@ -12,6 +12,8 @@ from app.utility.platform.security import hash_password, verify_password, handle
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email, cleanup_reset_otp
 from app.utility.platform.auth import extract_refresh_token, get_refresh_token_payload, clear_auth_cookies
+from datetime import datetime, timezone, timedelta
+from app.utility.stripe.helpers import get_plan_for_tenant_type
 
 
  
@@ -81,20 +83,26 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
             email=email,
             username=user.username.lower(),
             password_hash=hashed_password,
-            biography=user.biography,
-            country=user.country.lower(),
-            city=user.city.lower(),
             role_id=role_id
         )
     
         db.add(new_user)
         await db.flush()
+
+        # retrieve personal free plan
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="personal",
+            plan_name="free",
+            db=db
+        )
         
         # create personal workspace - no membership needed, owner_id is the proof
         personal_tenant = Tenant(
             name="private",
             slug=slug,
-            owner_id=new_user.user_id
+            owner_id=new_user.user_id,
+            plan_id=free_plan.plan_id,
+            credits_remaining=free_plan.credit_limit
         )
 
         db.add(personal_tenant)

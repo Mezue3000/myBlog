@@ -16,6 +16,7 @@ from app.utility.platform.security import hash_password
 from typing import Optional
 from app.utility.tenant.members_router import ensure_team_has_capacity
 from app.utility.tenant.invite import accept_workspace_invitation
+from app.utility.stripe.helpers import get_plan_for_tenant_type
 
 
 
@@ -197,19 +198,25 @@ async def register_invited_member(
             username=user.username.lower(),
             email=email,
             password_hash=hashed_password,
-            biography=user.biography,
-            country=user.country.lower(),
-            city=user.city.lower(),
             role_id=role_id
         )
 
         db.add(new_user)
         await db.flush()
+        
+        # retrieve personal free plan
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="personal",
+            plan_name="free",
+            db=db
+        )
 
         personal_tenant = Tenant(
             name=f"{new_user.username}'s Workspace",
             slug=slug,
-            owner_id=new_user.user_id
+            owner_id=new_user.user_id,
+            plan_id=free_plan.plan_id,
+            credits_remaining=free_plan.credit_limit
         )
 
         db.add(personal_tenant)

@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 
 # initialize router
-router = APIRouter(prefix="/stripe", tags=["Stripe"])
+router = APIRouter(prefix="/v1/stripe", tags=["Stripe"])
 
 
 

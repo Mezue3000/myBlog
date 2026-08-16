@@ -13,6 +13,7 @@ from typing import Optional
 from app.utility.platform.email import create_email_otp, verify_email_otp, send_verification_otp_email
 from sqlalchemy.orm import selectinload
 from uuid import UUID
+from app.utility.stripe.helpers import get_plan_for_tenant_type
 
 
 
@@ -26,6 +27,7 @@ logger = get_logger(__name__)
 async def create_headless_api_service(
     *,
     data: ApiProjectCreate,
+    current_user: User,
     current_tenant: Tenant,
     db: AsyncSession
 ):
@@ -37,12 +39,22 @@ async def create_headless_api_service(
         
         # generate slug
         slug = slugify(data.name, db)
+        
+        # retrieve API free plan
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="headless_api",
+            plan_name="free",
+            db=db
+        )
 
         # create tenant
         tenant = Tenant(
             name=data.name,
             type="headless_api",
-            slug=slug
+            slug=slug,
+            owner_id=current_user.user_id,
+            plan_id=free_plan.plan_id,
+            credits_remaining=free_plan.credit_limit
         )
 
         db.add(tenant)

@@ -21,7 +21,7 @@ from app.utility.platform.user import get_current_active_user
 
 
 # initialize router
-router = APIRouter(prefix="/api/v1",  tags=["headless_api"])
+router = APIRouter(prefix="/v1/api",  tags=["headless_api"])
 
 
 
@@ -32,13 +32,15 @@ router = APIRouter(prefix="/api/v1",  tags=["headless_api"])
 async def create_api_project(
     request: Request,
     data: ApiProjectCreate,
+    current_user: User = Depends(get_current_active_user),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         project = await create_headless_api_service(
             db=db,
-            tenant=current_tenant,
+            current_user=current_user,
+            current_tenant=current_tenant,
             data=data
         )
 

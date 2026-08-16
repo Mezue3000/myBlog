@@ -11,6 +11,7 @@ from app.utility.platform.auth import generate_auth_tokens
 from app.utility.platform.auth import create_access_token, create_refresh_token
 from app.models import User, Tenant
 from app.utility.platform.security import run_background_task, create_auth_audit_log_bg, create_auth_audit_log_safe, build_audit_context
+from app.utility.stripe.helpers import get_plan_for_tenant_type
 
 
 
@@ -199,19 +200,26 @@ async def handle_social_login(
                             password_hash="",
                             provider=provider,
                             provider_id=provider_id,
-                            country="Unknown",
-                            city="Unknown",
                             role_id=role_id
                         )
 
                         db.add(new_user)
                         await db.flush()
+                        
+                        # retrieve personal free plan
+                        free_plan = await get_plan_for_tenant_type(
+                            tenant_type="personal",
+                            plan_name="free",
+                            db=db
+                        )
 
-                        # Create Personal Workspace
+                        # create personal workspace
                         personal_tenant = Tenant(
                             name="private",
                             slug=slug,
-                            owner_id=new_user.user_id
+                            owner_id=new_user.user_id,
+                            plan_id=free_plan.plan_id,
+                            credits_remaining=free_plan.credit_limit
                         )
 
                         db.add(personal_tenant)
@@ -241,7 +249,7 @@ async def handle_social_login(
                         detail="Unable to create account."
                     )
 
-        # Fetch Personal Workspace
+        # fetch personal workspace
         tenant = await get_personal_tenant(user.user_id, db)
 
         if not tenant:

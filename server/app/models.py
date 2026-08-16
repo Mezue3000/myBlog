@@ -149,8 +149,8 @@ class Tenant(SQLModel, table=True):
     type: str = Field(default="personal", max_length=25)
     
     # add foreign keys
-    owner_id: int = Field(foreign_key="users.user_id", index=True, nullable=False)
-    plan_id: int = Field(default=None, foreign_key="plans.plan_id", index=True)
+    owner_id: Optional[int] = Field(foreign_key="users.user_id", index=True, nullable=False)
+    plan_id: Optional[int] = Field(default=None, foreign_key="plans.plan_id", index=True)
     deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     slug: str = Field(max_length=100, unique=True)
@@ -163,7 +163,7 @@ class Tenant(SQLModel, table=True):
     
     # credit system
     credits_remaining: int = Field(default=500, nullable=False)
-    next_credits_reset_at: datetime = Field(nullable=True)
+    next_credits_reset_at: datetime = Field(default=None, nullable=True)
     
     created_at: datetime = Field(
         default_factory=lambda:datetime.now(timezone.utc), 

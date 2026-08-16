@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import selectinload
 from app.utility.tenant.tenant_router import validate_tenant
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 
@@ -19,78 +19,66 @@ logger = get_logger(__name__)
 
 
 
+# define tenant types
+FREE_CREDIT_TENANT_TYPES = {
+    "personal",
+    "headless_api"
+}
+
+
+# define credit reset hours
+FREE_CREDIT_RESET_HOURS = 3
+
+
+
 # function to reset credit
-async def reset_credits_if_needed(tenant: Tenant, db: AsyncSession) -> None:
+async def reset_free_plan_credits_if_due(
+    *,
+    tenant: Tenant,
+    db: AsyncSession
+) -> bool:
     """
-    Resets a tenant's credits when a new billing period begins.
+    Reset credits for Free personal/headless_api tenants
+    after the 3-hour exhaustion period.
 
-    This function:
-    - finds the active subscription.
-    - loads the associated plan.
-    - checks whether a credit reset is due.
-    - restores credits.
-    - creates a credit-log entry.
-    - flushes changes only (no commit).
+    Does not commit.
     """
 
-    # active subscription
-    statement = (
-        select(Subscription)
-        .where(
-            Subscription.tenant_id == tenant.tenant_id,
-            Subscription.status == "active"
-        )
-    )
+    if tenant.type not in FREE_CREDIT_TENANT_TYPES:
+        return False
 
-    result = await db.exec(statement)
-    subscription = result.first()
+    if tenant.plan is None:
+        return False
 
-    if subscription is None:
-        return
-
-    # load plan
-    statement = (
-        select(Plan)
-        .where(Plan.plan_id == subscription.plan_id, Plan.is_active.is_(True))
-    )
-
-    result = await db.exec(statement)
-    plan = result.first()
-
-    if plan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subscription plan not found."
-        )
+    if tenant.plan.name != "free":
+        return False
 
     if tenant.next_credits_reset_at is None:
-        should_reset = True
+        return False
 
-    elif subscription.current_period_start is None:
-        should_reset = False
+    now = datetime.now(timezone.utc)
 
-    else:
-        should_reset = tenant.next_credits_reset_at < subscription.current_period_start
+    if now < tenant.next_credits_reset_at:
+        return False
 
-    if not should_reset:
-        return
+    tenant.credits_remaining = tenant.plan.credits
 
-    # reset credits
-    tenant.credits_remaining = plan.credits
-    tenant.next_credits_reset_at = subscription.current_period_end
+    tenant.next_credits_reset_at = None
 
     db.add(
         CreditLog(
             tenant_id=tenant.tenant_id,
-            amount=plan.credits,
+            amount=tenant.plan.credits,
             balance_after=tenant.credits_remaining,
-            action="renewal",
-            description="Monthly credit allocation"
+            action="free_reset",
+            description="Free plan credit reset after exhaustion.",
         )
     )
 
     db.add(tenant)
     await db.flush()
+
+    return True
  
  
  
@@ -122,20 +110,41 @@ async def consume_credits(
 
     validate_tenant(tenant=tenant)
 
-    # reset credits if a new billing period has started
-    await reset_credits_if_needed(tenant=tenant, db=db)
-
-    if tenant.credits_remaining < cost:
-        raise ValueError(
-            {
-                "error": "insufficient_credits",
-                "credits_remaining": tenant.credits_remaining,
-                "credits_required": cost
-            },
-        )
+    if (
+        tenant.type in FREE_CREDIT_TENANT_TYPES
+        and tenant.plan is not None
+        and tenant.plan.slug == "free"
+    ):
+        await reset_free_plan_credits_if_due(tenant=tenant, db=db)
     
+    if tenant.credits_remaining < cost:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "error": "credits_exhausted",
+                "message": (
+                    "Your credits have been exhausted. "
+                    "Please wait for your credits to reset."
+                ),
+                "credits_remaining": tenant.credits_remaining,
+                "credits_required": cost,
+                "next_credits_reset_at": (
+                    tenant.next_credits_reset_at.isoformat()
+                    if tenant.next_credits_reset_at
+                    else None
+                ),
+            }
+        )
     # deduct balance from memory string and update the tenant table state
     tenant.credits_remaining -= cost
+    
+    if (
+        tenant.type in FREE_CREDIT_TENANT_TYPES
+        and tenant.plan is not None
+        and tenant.plan.slug == "free"
+        and tenant.credits_remaining == 0
+    ):
+        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(hours=FREE_CREDIT_RESET_HOURS)
 
     db.add(
         CreditLog(
@@ -156,149 +165,74 @@ async def consume_credits(
 
 
 
-# function to retrieve existing credit log
-async def get_credit_log_by_reference(
-    *,
-    tenant_id: UUID,
-    reference_id: str,
-    action: str,
-    db: AsyncSession
-) -> Optional[CreditLog]:
-    """
-    Retrieve an existing credit log using its reference.
-
-    For invoice.paid, reference_id is the Stripe invoice ID.
-
-    The caller owns the transaction.
-    """
-
-    statement = (
-        select(CreditLog)
-        .where(
-            CreditLog.tenant_id == tenant_id,
-            CreditLog.reference_id == reference_id,
-            CreditLog.action == action
-        )
-    )
-
-    result = await db.exec(statement)
-
-    return result.first()
-
-
-
-
-
-# function to allocate subscription credits
-async def allocate_invoice_credits(
+# function to allocate credit to newly paid stripe billing
+async def allocate_paid_plan_credits(
     *,
     tenant: Tenant,
     subscription: Subscription,
-    invoice_id: str,
     db: AsyncSession
-) -> None:
+) -> bool:
     """
-    Allocate plan credits after a successful Stripe invoice.
-    
-    Idempotency
-    -----------
-    The Stripe invoice ID is stored in CreditLog.reference_id.
+    Allocate credits for a newly paid Stripe billing period.
 
-    The combination of:
-        tenant_id
-        reference_id
-        action
-    identifies a particular credit allocation.
+    This function is intended to be called from invoice.paid.
 
-    Transaction
-    -----------
-    Does NOT commit.
-    The caller owns the transaction.
+    Returns:
+        True  -> credits allocated
+        False -> allocation skipped
+
+    Does not commit.
     """
 
-    # validate inputs
-    if tenant is None:
-        raise ValueError("Tenant is required.")
+    # validate tenant plan
+    if tenant.plan is None:
+        return False
 
-    if subscription is None:
-        raise ValueError("Subscription is required.")
+    # never allocate paid credits to Free plans
+    if tenant.plan.slug == "free":
+        return False
 
-    if not invoice_id:
-        raise ValueError("Stripe invoice ID is required.")
+    # validate subscription period
+    if subscription.current_period_start is None:
+        return False
 
-    # get subscription plan
-    plan = subscription.plan
+    if subscription.current_period_end is None:
+        return False
 
-    if plan is None:
-        raise ValueError(
-            f"Subscription "
-            f"'{subscription.stripe_subscription_id}' "
-            "has no associated plan."
-        )
+    # prevent duplicate allocation
+    if (
+        tenant.next_credits_reset_at is not None
+        and tenant.next_credits_reset_at
+        >= subscription.current_period_start
+    ):
+        return False
 
-    # validate plan credits
-    if plan.credits <= 0:
-        raise ValueError(
-            f"Plan '{plan.name}' has an invalid "
-            f"credit allocation: {plan.credits}."
-        )
+    # allocate credits
+    credits = tenant.plan.credits
+    tenant.credits_remaining = credits
 
-    # idempotency check
-    existing_log = await get_credit_log_by_reference(
-        tenant_id=tenant.tenant_id,
-        reference_id=invoice_id,
-        action="subscription_credit",
-        db=db
+    # the next allocation occurs at the next Stripe billing-period boundary.
+    tenant.next_credits_reset_at = (
+        subscription.current_period_end
     )
 
-    if existing_log is not None:
-        logger.info(
-            "Credits for invoice '%s' have already "
-            "been allocated to tenant '%s'.",
-            invoice_id,
-            tenant.tenant_id
+    db.add(
+        CreditLog(
+            tenant_id=tenant.tenant_id,
+            amount=credits,
+            balance_after=tenant.credits_remaining,
+            action="renewal",
+            description=(
+                "Paid plan credit allocation "
+                "for Stripe billing period."
+            ),
         )
-
-        return
-    
-    # calculate new balance
-    previous_balance = tenant.credits_remaining
-    allocated_credits = plan.credits
-    new_balance = allocated_credits
-
-    # update tenant balance
-    tenant.credits_remaining = new_balance
-    tenant.next_credits_reset_at = subscription.current_period_end
+    )
 
     db.add(tenant)
-
-    # create credit log
-    credit_log = CreditLog(
-        tenant_id=tenant.tenant_id,
-        amount=allocated_credits,
-        balance_after=new_balance,
-        action="subscription_credit",
-        description=(
-            f"{plan.name} plan credit allocation "
-            f"for invoice {invoice_id}."
-        ),
-        reference_id=invoice_id
-    )
-
-    db.add(credit_log)
     await db.flush()
 
-    logger.info(
-        "Allocated %s credits to tenant '%s' "
-        "for invoice '%s'. Balance: %s -> %s.",
-        allocated_credits,
-        tenant.tenant_id,
-        invoice_id,
-        previous_balance,
-        new_balance
-    )
-
-
+    return True
 
 
 
@@ -309,7 +243,7 @@ async def allocate_invoice_credits(
 # CREDIT_COSTS = {
 #     "text_generation": 20,
 #     "image_generation": 100,
-#     "speech_to_text": 10,
+#     "speech_to_text": 10
 # }
 
 # @router.post("/generate")
