@@ -8,6 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Tenant, TenantMembership, AuditLog
 from app.utility.tenant.tenant_router import validate_tenant_uniqueness, get_user_tenants_by_type, validate_tenant_access
 from app.utility.platform.user import slugify
+from app.utility.stripe.helpers import get_plan_for_tenant_type
 from uuid import UUID
 from typing import Optional
 from app.utility.platform.database import async_engine
@@ -33,11 +34,20 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         # extract slug from tenant-name
         slug = slugify(data.name, db)
         
+        # get tenant plan details
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="team",
+            plan_name="free", 
+            db=db
+        )
+        
         # create tenant
         tenant = Tenant(
             name=data.name,
             type="team",
-            slug=slug
+            slug=slug,
+            plan_id=free_plan.plan_id,
+            credits_remaining=free_plan.credits
         )
 
         db.add(tenant)
@@ -71,7 +81,7 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         logger.error(f"Unexpected error: {str(e)}")
         raise ValueError("Something went wrong")
 
-       
+
         
         
         

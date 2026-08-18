@@ -38,7 +38,7 @@ async def sync_subscription_from_stripe(
     # lock tenant
     tenant = await get_locked_tenant(stripe_customer_id=subscription_data["stripe_customer_id"], db=db)
     
-    # load plan
+    # load plan by price id
     plan = await get_plan_by_price_id(stripe_price_id=subscription_data["stripe_price_id"], db=db)
     
     # upsert subscription

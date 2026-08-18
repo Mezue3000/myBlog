@@ -412,7 +412,7 @@ async def get_plan_by_price_id(
 async def get_subscription_by_tenant(
     *,
     tenant_id: UUID,
-    db: AsyncSession,
+    db: AsyncSession
 ) -> Subscription | None:
     
     # returns the tenant subscription if one exists
@@ -510,7 +510,7 @@ async def get_billing_audit(
     
     statement = (
         select(BillingAudit)
-        .where(BillingAudit.stripe_event_id == stripe_event_id)
+        .where(BillingAudit.stripe_event_id == stripe_event_id) 
     )
 
     result = await db.exec(statement)
@@ -753,8 +753,7 @@ async def handle_subscription_cancellation(
         Paid plan -> Free personal plan.
 
     Team tenants:
-        Paid subscription ends -> no Free Team plan.
-        Therefore plan_id becomes None.
+        Paid plan -> Free team plan.
 
     Headless API tenants:
         Paid plan -> Free headless_api plan.
@@ -782,10 +781,14 @@ async def handle_subscription_cancellation(
 
     # team tenant
     elif tenant_type == "team":
+        free_plan = await get_plan_for_tenant_type(
+            tenant_type="team",
+            plan_name="free",
+            db=db
+        )
         
-        # team tenants have no Free plan by design.
-        tenant.plan_id = None
-        tenant.credits_remaining = 0
+        tenant.plan_id = free_plan.plan_id,
+        tenant.credits_remaining = free_plan.credit_limit
         tenant.next_credits_reset_at = None
 
         db.add(tenant)

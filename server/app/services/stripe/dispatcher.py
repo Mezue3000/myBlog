@@ -10,7 +10,6 @@ from app.services.stripe.subscription import handle_subscription_updated, handle
 
 
 
-
 # initialize logging
 logger = get_logger(__name__)
 

@@ -56,8 +56,6 @@ async def create_superadmin():
             username="superadmin",
             email="admin@example.com",
             password_hash=hashed_pwd,
-            country="nigeria",
-            city="enugu",
             role_id=role.role_id,
             is_active=True
         )

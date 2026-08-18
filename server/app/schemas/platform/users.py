@@ -9,9 +9,6 @@ from typing import Optional
 # base schema for common fields
 class UserBase(SQLModel):
     username: str = Field(min_length=2, max_length=55)
-    biography: Optional[str] = Field(default=None)
-    country: str
-    city: str 
     
     
 
@@ -61,9 +58,6 @@ class UserRead(UserBase):
 # schema to update user fields
 class UserUpdate(SQLModel):
     username: Optional[str] = None
-    biography: Optional[str] = None
-    country: Optional[str] = None
-    city: Optional[str] = None
      
      
      

@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 # define tenant types
 FREE_CREDIT_TENANT_TYPES = {
     "personal",
+    "team",
     "headless_api"
 }
 
@@ -38,7 +39,7 @@ async def reset_free_plan_credits_if_due(
     db: AsyncSession
 ) -> bool:
     """
-    Reset credits for Free personal/headless_api tenants
+    Reset credits for Free personal/team/headless_api tenants
     after the 3-hour exhaustion period.
 
     Does not commit.
@@ -71,7 +72,7 @@ async def reset_free_plan_credits_if_due(
             amount=tenant.plan.credits,
             balance_after=tenant.credits_remaining,
             action="free_reset",
-            description="Free plan credit reset after exhaustion.",
+            description="Free plan credit reset after exhaustion."
         )
     )
 
@@ -113,7 +114,7 @@ async def consume_credits(
     if (
         tenant.type in FREE_CREDIT_TENANT_TYPES
         and tenant.plan is not None
-        and tenant.plan.slug == "free"
+        and tenant.plan.name == "free"
     ):
         await reset_free_plan_credits_if_due(tenant=tenant, db=db)
     
@@ -138,13 +139,15 @@ async def consume_credits(
     # deduct balance from memory string and update the tenant table state
     tenant.credits_remaining -= cost
     
+    now = datetime.now(timezone.utc)
+    
     if (
         tenant.type in FREE_CREDIT_TENANT_TYPES
         and tenant.plan is not None
         and tenant.plan.slug == "free"
         and tenant.credits_remaining == 0
     ):
-        tenant.next_credits_reset_at = datetime.now(timezone.utc) + timedelta(hours=FREE_CREDIT_RESET_HOURS)
+        tenant.next_credits_reset_at = now + timedelta(hours=FREE_CREDIT_RESET_HOURS)
 
     db.add(
         CreditLog(
@@ -189,7 +192,7 @@ async def allocate_paid_plan_credits(
         return False
 
     # never allocate paid credits to Free plans
-    if tenant.plan.slug == "free":
+    if tenant.plan.name == "free":
         return False
 
     # validate subscription period
@@ -212,9 +215,7 @@ async def allocate_paid_plan_credits(
     tenant.credits_remaining = credits
 
     # the next allocation occurs at the next Stripe billing-period boundary.
-    tenant.next_credits_reset_at = (
-        subscription.current_period_end
-    )
+    tenant.next_credits_reset_at = subscription.current_period_end
 
     db.add(
         CreditLog(
@@ -222,10 +223,7 @@ async def allocate_paid_plan_credits(
             amount=credits,
             balance_after=tenant.credits_remaining,
             action="renewal",
-            description=(
-                "Paid plan credit allocation "
-                "for Stripe billing period."
-            ),
+            description="Paid plan credit allocation for stripe billing period."
         )
     )
 

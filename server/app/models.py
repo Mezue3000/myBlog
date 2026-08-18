@@ -150,7 +150,7 @@ class Tenant(SQLModel, table=True):
     
     # add foreign keys
     owner_id: Optional[int] = Field(foreign_key="users.user_id", index=True, nullable=False)
-    plan_id: Optional[int] = Field(default=None, foreign_key="plans.plan_id", index=True)
+    plan_id: int = Field(default=None, foreign_key="plans.plan_id", index=True)
     deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     
     slug: str = Field(max_length=100, unique=True)
@@ -162,7 +162,7 @@ class Tenant(SQLModel, table=True):
     stripe_customer_id: Optional[str] = Field(default=None, max_length=255, index=True, unique=True)
     
     # credit system
-    credits_remaining: int = Field(default=500, nullable=False)
+    credits_remaining: int = Field(default=0, nullable=False)
     next_credits_reset_at: datetime = Field(default=None, nullable=True)
     
     created_at: datetime = Field(
@@ -208,7 +208,7 @@ class Tenant(SQLModel, table=True):
 
 
 
-    
+
     
 # create tenant-membership model
 class TenantMembership(SQLModel, TenantScopedMixin, table=True): 

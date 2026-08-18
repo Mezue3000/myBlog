@@ -12,7 +12,6 @@ from uuid import UUID
 class UserRead(SQLModel):
     user_id: int
     username: str
-    country: str
     is_active: bool
     created_at: datetime
 
@@ -35,9 +34,6 @@ class PaginatedUsers(SQLModel):
 # schema to update user fields
 class UserUpdate(SQLModel):
     username: Optional[str] = None
-    biography: Optional[str] = None
-    country: Optional[str] = None
-    city: Optional[str] = None
      
      
      
