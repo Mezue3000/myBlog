@@ -43,6 +43,46 @@ async def get_current_membership(
 
 
 
+# get maximum members allowed by current plan
+def get_max_team_members(
+    *,
+    tenant: Tenant
+) -> int:
+    """
+    Return the maximum number of members allowed by the
+    tenant's current plan.
+
+    Example:
+        Free       -> 3
+        Pro        -> 10
+        Enterprise -> 100
+
+    The actual values come from Plan.features.
+    """
+
+    if tenant.type != "team":
+        raise ValueError("Only team workspaces have member limits.")
+    
+    max_members = get_plan_feature(tenant=tenant, feature="max_team_members")
+
+    if max_members is None:
+        raise ValueError("Plan configuration error: " "max_team_members is missing.")
+    
+    # Make sure the value stored in JSON is usable.
+    try:
+        max_members = int(max_members)
+    except (TypeError, ValueError):
+        raise ValueError("Plan configuration error: " "max_team_members must be an integer.")
+
+    if max_members < 1:
+        raise ValueError("Plan configuration error: " "max_team_members must be greater than zero.")
+
+    return max_members
+
+
+
+
+
 # function to count the remaining members a tenant can have
 async def get_remaining_team_slots(
     tenant: Tenant,
@@ -61,14 +101,8 @@ async def get_remaining_team_slots(
     count by passing exclude_invitation_id.
     """
     
-    # retrieve a plan feature.
-    max_members = get_plan_feature(tenant=tenant, feature="max_team_members")
-    
-    if max_members is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Plan configuration error: " "max_team_members is missing."
-        )
+    # get maximum allowed members from current plan
+    max_members = get_max_team_members(tenant=tenant)
         
     # count both active/deactivated members
     statement = (
@@ -152,7 +186,7 @@ async def ensure_team_has_capacity(
     if remaining_slots <= 0:
         raise ValueError(
             "This workspace has reached the maximum number "
-            "of members allowed by its current subscription."
+            "of members allowed by its current plan."
         )
 
     return remaining_slots

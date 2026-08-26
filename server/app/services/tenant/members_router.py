@@ -22,15 +22,11 @@ from app.utility.stripe.helpers import get_plan_for_tenant_type
 
 
 
-
-
 # initialize logging
 logger = get_logger(__name__)
 
 
 
-
-     
 # function to accept IV
 async def accept_invitation_service(
     token: str,

@@ -5,12 +5,18 @@ from typing import Any
 
 
 
-# function to extract plan-limits
+# get a feature from the tenant's current plan
 def get_plan_feature(
     tenant: Tenant,
     feature: str,
     default: Any = None
 ) -> Any:
+    """
+    Return a feature value from the tenant's current plan.
+
+    The tenant's plan is the source of truth for plan limits.
+    """
+    
     if tenant.plan is None:
         return default
 

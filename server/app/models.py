@@ -67,7 +67,6 @@ class TenantScopedMixin:
 
 
 
-
 # create user model
 class User(SQLModel, table=True):
     __tablename__ = "users"
@@ -145,7 +144,7 @@ class Tenant(SQLModel, table=True):
     __tablename__ = "tenants"
      
     tenant_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
-    name: str = Field(max_length=255, index=True, unique=True)
+    name: str = Field(max_length=255, index=True)
     type: str = Field(default="personal", max_length=25)
     
     # add foreign keys
