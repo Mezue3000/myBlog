@@ -44,7 +44,9 @@ async def get_personal_tenant(user_id: int, db: AsyncSession) -> Tenant:
 async def validate_tenant_uniqueness(name: str, db: AsyncSession):
     statement = select(Tenant).where(Tenant.name == name)
 
-    existing_tenant = db.exec(statement).first()
+    result = await db.exec(statement)
+    
+    existing_tenant = result.first()
 
     if existing_tenant:
         raise ValueError("Tenant name already exists")

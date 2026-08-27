@@ -102,7 +102,7 @@ async def finalize_registration(user: UserCreate, otp_code: str, db: AsyncSessio
             slug=slug,
             owner_id=new_user.user_id,
             plan_id=free_plan.plan_id,
-            credits_remaining=free_plan.credit_limit
+            credits_remaining=free_plan.credits
         )
 
         db.add(personal_tenant)
@@ -318,7 +318,7 @@ async def initiate_email_update(
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists",
+            detail="Email already exists"
         )
 
     # verify password
@@ -333,7 +333,7 @@ async def initiate_email_update(
 
     return {
         "status": "success",
-        "message": "Verification code sent to your new email address",  
+        "message": "Verification code sent to your new email address"
     }
 
 

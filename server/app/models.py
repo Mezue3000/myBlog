@@ -148,7 +148,7 @@ class Tenant(SQLModel, table=True):
     type: str = Field(default="personal", max_length=25)
     
     # add foreign keys
-    owner_id: Optional[int] = Field(foreign_key="users.user_id", index=True, nullable=False)
+    owner_id: Optional[int] = Field(foreign_key="users.user_id", index=True, nullable=True)
     plan_id: int = Field(default=None, foreign_key="plans.plan_id", index=True)
     deleted_by: Optional[int] = Field(default=None, foreign_key="users.user_id")
     

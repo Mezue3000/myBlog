@@ -219,7 +219,7 @@ async def handle_social_login(
                             slug=slug,
                             owner_id=new_user.user_id,
                             plan_id=free_plan.plan_id,
-                            credits_remaining=free_plan.credit_limit
+                            credits_remaining=free_plan.credits
                         )
 
                         db.add(personal_tenant)

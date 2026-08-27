@@ -772,7 +772,7 @@ async def handle_subscription_cancellation(
         )
 
         tenant.plan_id = free_plan.plan_id
-        tenant.credits_remaining = free_plan.credit_limit
+        tenant.credits_remaining = free_plan.credits
 
         # the free credit countdown should start when tenant actually exhausts the credits.
         tenant.next_credits_reset_at = None
@@ -788,7 +788,7 @@ async def handle_subscription_cancellation(
         )
         
         tenant.plan_id = free_plan.plan_id,
-        tenant.credits_remaining = free_plan.credit_limit
+        tenant.credits_remaining = free_plan.credits
         tenant.next_credits_reset_at = None
 
         db.add(tenant)
@@ -802,7 +802,7 @@ async def handle_subscription_cancellation(
         )
 
         tenant.plan_id = free_plan.plan_id
-        tenant.credits_remaining = free_plan.credit_limit
+        tenant.credits_remaining = free_plan.credits
         tenant.next_credits_reset_at = None
 
         db.add(tenant)
