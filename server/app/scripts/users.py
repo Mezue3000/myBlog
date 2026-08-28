@@ -136,7 +136,6 @@ async def create_personal_tenant(
     # create personal tenant
     tenant = Tenant(
         name="private",
-        type="personal",
         slug=slug,
         owner_id=user.user_id,
         plan_id=free_plan.plan_id,

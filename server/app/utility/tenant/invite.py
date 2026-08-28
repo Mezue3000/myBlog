@@ -1,6 +1,7 @@
 # import dependencies
 from app.cores.logging import get_logger
-import os, httpx, asyncio
+import os, httpx, asyncio, aiosmtplib
+from email.message import EmailMessage
 from pydantic import EmailStr
 from app.models import User, TenantInvitation, TenantMembership
 from datetime import datetime, timezone
@@ -18,14 +19,26 @@ logger = get_logger(__name__)
 
 
 
-
-MAIL_API_KEY = os.getenv("MAIL_API_KEY")
+# fetch email credentials
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT")) 
+SMTP_USERNAME = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM")
 
-if not MAIL_API_KEY or not MAIL_FROM:
-    raise RuntimeError("Missing MAIL_API_KEY or MAIL_FROM")
+if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PORT, SMTP_PASSWORD, MAIL_FROM]):
+  raise RuntimeError("Missing required SMTP environment variables")
 
-RESEND_API_URL = "https://api.resend.com/emails"
+
+
+
+# MAIL_API_KEY = os.getenv("MAIL_API_KEY")
+# MAIL_FROM = os.getenv("MAIL_FROM")
+
+# if not MAIL_API_KEY or not MAIL_FROM:
+#     raise RuntimeError("Missing MAIL_API_KEY or MAIL_FROM")
+
+# RESEND_API_URL = "https://api.resend.com/emails"
 
 
 
@@ -335,74 +348,156 @@ def build_invitation_email_html(
 
 
 
-# function to send tenant iv
+# function to send tenant invitation email
 async def send_tenant_invitation_email(
     email: EmailStr,
     tenant_name: str,
     invited_by: str,
     invite_token: str
 ):
-    try:
-        invite_link = (
-            f"http://localhost:3000/login?invite_token={invite_token}"
-        )
+  try:
+    invite_link = (
+      f"http://localhost:3000/login?invite_token={invite_token}"
+    )
 
-        signup_link = (
-            f"http://localhost:3000/signin?invite_token={invite_token}"
-        )
+    signup_link = (
+      f"http://localhost:3000/signin?invite_token={invite_token}"
+    )
 
-        subject = f"You are invited to join {tenant_name}"
+    subject = f"You are invited to join {tenant_name}"
 
-        html_content = build_invitation_email_html(
-            email=email,
-            tenant_name=tenant_name,
-            invited_by=invited_by,
-            invite_link=invite_link,
-            signup_link=signup_link
-        )
+    html_content = build_invitation_email_html(
+      email=email,
+      tenant_name=tenant_name,
+      invited_by=invited_by,
+      invite_link=invite_link,
+      signup_link=signup_link
+    )
+        
+        
+    # Build email message
+    message = EmailMessage()
 
-        payload = {
-            "from": MAIL_FROM,
-            "to": [email],
-            "subject": subject,
-            "html": html_content
-        }
+    message["From"] = MAIL_FROM
+    message["To"] = email
+    message["Subject"] = subject
 
-        headers = {
-            "Authorization": f"Bearer {MAIL_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    # Plain-text fallback
+    message.set_content(
+      f"You have been invited to join {tenant_name}. "
+      f"Please use the invitation link in the HTML version "
+      f"of this email."
+    )
 
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(
-                RESEND_API_URL,
-                json=payload,
-                headers=headers
-            )
+    # html version
+    message.add_alternative(html_content, subtype="html")
 
-        response.raise_for_status()
+    # send email through SMTP
+    await aiosmtplib.send(
+      message,
+      hostname=SMTP_HOST,
+      port=SMTP_PORT,
+      username=SMTP_USERNAME,
+      password=SMTP_PASSWORD,
+      start_tls=True,
+      timeout=10
+    )
 
-        logger.info(
-            "Invitation email sent successfully",
-            extra={"email": email, "tenant": tenant_name}
-        )
+    logger.info(
+      "Invitation email sent successfully",
+      extra={
+        "email": email,
+        "tenant": tenant_name
+      },
+    )
 
-    except httpx.HTTPStatusError as e:
-        logger.error(
-            "Resend API error",
-            extra={
-                "email": email,
-                "status": e.response.status_code,
-                "body": e.response.text,
-            },
-            exc_info=True
-        )
+  except aiosmtplib.errors.SMTPTimeoutError:
+    logger.error(
+      "Timeout sending invitation email",
+      extra={
+        "email": email,
+        "tenant": tenant_name
+      },
+      exc_info=True
+    )
 
-    except Exception:
-        logger.exception(
-            "Unexpected error sending invitation email",
-            extra={"email": email}
-        )
+  except aiosmtplib.errors.SMTPException as e:
+    logger.error(
+      "SMTP error sending invitation email",
+      extra={
+        "email": email,
+        "tenant": tenant_name,
+        "error": str(e)
+      },
+      exc_info=True
+    )
+
+  except OSError as e:
+    logger.error(
+      "Network error sending invitation email",
+      extra={
+        "email": email,
+        "tenant": tenant_name,
+        "error": str(e)
+      },
+      exc_info=True
+    )
+
+  except Exception:
+    logger.exception(
+      "Unexpected error sending invitation email",
+      extra={
+        "email": email,
+        "tenant": tenant_name
+      },
+    )
+        
+  
+        
+        
+
+    #     payload = {
+    #         "from": MAIL_FROM,
+    #         "to": [email],
+    #         "subject": subject,
+    #         "html": html_content
+    #     }
+
+    #     headers = {
+    #         "Authorization": f"Bearer {MAIL_API_KEY}",
+    #         "Content-Type": "application/json"
+    #     }
+
+    #     async with httpx.AsyncClient(timeout=10) as client:
+    #         response = await client.post(
+    #             RESEND_API_URL,
+    #             json=payload,
+    #             headers=headers
+    #         )
+
+    #     response.raise_for_status()
+
+    #     logger.info(
+    #         "Invitation email sent successfully",
+    #         extra={"email": email, "tenant": tenant_name}
+    #     )
+
+    # except httpx.HTTPStatusError as e:
+    #     logger.error(
+    #         "Resend API error",
+    #         extra={
+    #             "email": email,
+    #             "status": e.response.status_code,
+    #             "body": e.response.text,
+    #         },
+    #         exc_info=True
+    #     )
+
+    # except Exception:
+    #     logger.exception(
+    #         "Unexpected error sending invitation email",
+    #         extra={"email": email}
+    #     )
 
 
 

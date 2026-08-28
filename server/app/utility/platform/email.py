@@ -1,14 +1,16 @@
 # import dependencies 
+from app.cores.logging import get_logger
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 from typing import Optional
-import json, secrets, os, pyotp, httpx
+import json, secrets, os, pyotp, httpx, aiosmtplib
+from email.message import EmailMessage
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks
 from app.cores.redis import redis_client
-from app.cores.logging import get_logger
+
 
 
 
@@ -158,14 +160,27 @@ async def verify_email_otp(otp_code: str, scope: str) -> str:
 
 
 # fetch email credentials
-MAIL_API_KEY = os.getenv("MAIL_API_KEY")
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT")) 
+SMTP_USERNAME = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM")
 
-if not MAIL_API_KEY or not MAIL_FROM:
-    raise RuntimeError("Missing RESEND_API_KEY or MAIL_FROM")
+if not all([SMTP_HOST, SMTP_USERNAME, SMTP_PORT, SMTP_PASSWORD, MAIL_FROM]):
+    raise RuntimeError("Missing required SMTP environment variables")
 
 
-RESEND_API_URL = "https://api.resend.com/emails"
+
+
+
+# MAIL_API_KEY = os.getenv("MAIL_API_KEY")
+# MAIL_FROM = os.getenv("MAIL_FROM")
+
+# if not MAIL_API_KEY or not MAIL_FROM:
+#     raise RuntimeError("Missing RESEND_API_KEY or MAIL_FROM")
+
+
+# RESEND_API_URL = "https://api.resend.com/emails"
 
 
 
@@ -177,7 +192,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "Thank you for signing up! To complete your registration, "
             "please verify your email address by entering this code on our website:"
         )
-        subject = "BlogMap Verification Email - Registration"
+        subject = "CargoMap Verification Email - Registration"
         endnote = "If you did not request this, please ignore this email."
     
     
@@ -187,7 +202,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "We noticed a login attempt on your account. "
             "If that was you, please enter this code below:"
         )
-        subject = "BlogMap Login Verification Code"
+        subject = "CargoMap Login Verification Code"
         endnote = (
             "If you did not try to access your BlogMap account, "
             "please reset your password immediately."
@@ -200,7 +215,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             f"You requested to update your email address to {email}. "
             "To confirm this change, please enter this code:"
         )
-        subject = "BlogMap Email Change Confirmation"
+        subject = "CargoMap Email Change Confirmation"
         endnote = "If you did not request this change, contact support immediately."
     
     
@@ -210,7 +225,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "You requested to reset your password. "
             "Please enter this code to proceed:"
         )
-        subject = "BlogMap Password Reset Code "
+        subject = "CargoMap Password Reset Code "
         endnote = "If you did not request this, please ignore this email."
     
     
@@ -220,7 +235,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "You requested to permanently delete a user account. "
             "Enter the verification code below to authorize this action:"
         )
-        subject = "BlogMap User Deletion Verification"
+        subject = "CargoMap User Deletion Verification"
         endnote = (
             "If you did not make this request, "
             "please secure your account immediately."
@@ -234,7 +249,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "This action cannot be undone. "
             "Enter the verification code below to continue:"
         )
-        subject = "BlogMap Workspace Deletion Verification"
+        subject = "CargoMap Workspace Deletion Verification"
         endnote = (
             "If you did not make this request, "
             "your account may be compromised. "
@@ -249,7 +264,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
             "Applications using this key will immediately lose access. "
             "Enter the verification code below to continue:"
         )
-        subject = "BlogMap API Key Revocation Verification"
+        subject = "CargoMap API Key Revocation Verification"
         endnote = (
             "If you did not make this request, "
             "please review your account security immediately."
@@ -281,47 +296,103 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
   <p style="margin:0;font-size:13px;color:#777;">Best regards,<br/>BlogMap Team</p>
 </div>
 """
+    
+    # build email message
+    message = EmailMessage()
 
-    payload = {
-        "from": MAIL_FROM,
-        "to": [email],
-        "subject": subject,
-        "html": html_content
-    }
+    message["From"] = MAIL_FROM
+    message["To"] = email
+    message["Subject"] = subject
+    
+    # plain text fallback (for old mail clients)
+    message.set_content("Please use the verification code sent to your email.")
+    
+    # displayed by default on modern client
+    message.add_alternative(html_content, subtype="html")
 
-    headers = {
-        "Authorization": f"Bearer {MAIL_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    # send email
+    # Send email
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            response = await client.post(
-                RESEND_API_URL,
-                json=payload,
-                headers=headers
-            )
+        await aiosmtplib.send(
+            message,
+            hostname=SMTP_HOST,
+            port=SMTP_PORT,
+            username=SMTP_USERNAME,
+            password=SMTP_PASSWORD,
+            start_tls=True,
+            timeout=8
+        )
+        
+        logger.info(
+            f"OTP email sent successfully to {email} "
+            f"(scope: {scope})"
+        )
 
-        response.raise_for_status()  
-
-        logger.info(f"OTP email sent successfully to {email} (scope: {scope})")
-            
-
-    except httpx.HTTPStatusError as e:
+    except aiosmtplib.errors.SMTPTimeoutError:
         logger.error(
-            f"Resend API error sending OTP to {email}: {e.response.status_code} - {e.response.text}",
+            f"Timeout sending OTP email to {email}",
             exc_info=True
         )
 
-    except httpx.TimeoutException:
-        logger.error(f"Timeout sending OTP email to {email}", exc_info=True)
+    except aiosmtplib.errors.SMTPException as e:
+        logger.error(
+            f"SMTP error sending OTP to {email}: {e}",
+            exc_info=True
+        )
 
-    except httpx.RequestError as e:
-        logger.error(f"Network error sending OTP to {email}: {str(e)}", exc_info=True)
+    except OSError as e:
+        logger.error(
+            f"Network error sending OTP to {email}: {e}",
+            exc_info=True
+        )
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error sending OTP to {email}")
+    
+    
+    
+    
+    
+    # payload = {
+    #     "from": MAIL_FROM,
+    #     "to": [email],
+    #     "subject": subject,
+    #     "html": html_content
+    # }
+
+    # headers = {
+    #     "Authorization": f"Bearer {MAIL_API_KEY}",
+    #     "Content-Type": "application/json"
+    # }
+
+
+    # # send email
+    # try:
+    #     async with httpx.AsyncClient(timeout=8) as client:
+    #         response = await client.post(
+    #             RESEND_API_URL,
+    #             json=payload,
+    #             headers=headers
+    #         )
+
+    #     response.raise_for_status()  
+
+    #     logger.info(f"OTP email sent successfully to {email} (scope: {scope})")
+            
+
+    # except httpx.HTTPStatusError as e:
+    #     logger.error(
+    #         f"Resend API error sending OTP to {email}: {e.response.status_code} - {e.response.text}",
+    #         exc_info=True
+    #     )
+
+    # except httpx.TimeoutException:
+    #     logger.error(f"Timeout sending OTP email to {email}", exc_info=True)
+
+    # except httpx.RequestError as e:
+    #     logger.error(f"Network error sending OTP to {email}: {str(e)}", exc_info=True)
+
+    # except Exception as e:
+    #     logger.exception(f"Unexpected error sending OTP to {email}")
         
         
         
