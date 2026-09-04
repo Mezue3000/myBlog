@@ -58,6 +58,7 @@ class TenantScopedMixin:
     tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
 
     @declared_attr
+
     def __table_args__(cls) -> tuple:
         return (
             sa.Index(f"ix_{cls.__tablename__}_tenant_id", "tenant_id"),
@@ -285,7 +286,7 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     project_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True, unique=True)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
     
     name: str = Field(max_length=100, nullable=False, unique=True)
     description: Optional[str] = Field(default=None, max_length=500)
@@ -506,7 +507,7 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
     amount: int = Field(nullable=False)
     balance_after: int = Field(nullable=False)
     action: str = Field(max_length=30)
-    description: Optional[str] = Field(default=None, max_length=255,)
+    description: Optional[str] = Field(default=None, max_length=255)
     reference_id: Optional[str] = Field(default=None, max_length=255, unique=True, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     

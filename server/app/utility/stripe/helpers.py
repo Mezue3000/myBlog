@@ -774,7 +774,7 @@ async def handle_subscription_cancellation(
         tenant.plan_id = free_plan.plan_id
         tenant.credits_remaining = free_plan.credits
 
-        # the free credit countdown should start when tenant actually exhausts the credits.
+        # free credit countdown start when tenant exhausts the credits.
         tenant.next_credits_reset_at = None
 
         db.add(tenant)

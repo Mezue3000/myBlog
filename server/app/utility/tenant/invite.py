@@ -100,7 +100,7 @@ def build_invitation_email_html(
                   font-weight:700;
                 "
               >
-                BlogMap
+                CargoMap
               </h2>
             </td>
           </tr>
@@ -328,7 +328,7 @@ def build_invitation_email_html(
                 background:#f9fafb;
               "
             >
-              © {tenant_name} · Powered by BlogMap
+              © {tenant_name} · Powered by CargoMap
             </td>
           </tr>
 
@@ -454,7 +454,7 @@ async def send_tenant_invitation_email(
         
   
         
-        
+  
 
     #     payload = {
     #         "from": MAIL_FROM,
