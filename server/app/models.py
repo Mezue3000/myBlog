@@ -55,7 +55,7 @@ class Permission(SQLModel, table=True):
 
 # tenant-scoped auto-marker mixin
 class TenantScopedMixin:
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False)
 
     @declared_attr
 
@@ -216,8 +216,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
 
     membership_id: Optional[int] = Field(default=None, primary_key=True)
      
-    # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
+    # add foreign key
     user_id: int = Field(foreign_key="users.user_id", nullable=False, index=True)
 
     role: str = Field(default="member", max_length=10)
@@ -243,8 +242,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
     
     # add unique constraint(one user per tenant)
     __table_args__ = (
-        sa.Index("ix_tenant_memberships_tenant_id", "tenant_id"),
-        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user")
+        sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_user"),
     )
 
 
@@ -258,7 +256,6 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     invite_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     invited_by: int = Field(foreign_key="users.user_id")
     
     email: str = Field(max_length=255, default=None, index=True)
@@ -284,10 +281,6 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "api_projects"
 
     project_id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
-    
     name: str = Field(max_length=100, nullable=False, unique=True)
     description: Optional[str] = Field(default=None, max_length=500)
     environment: str = Field(default="live", max_length=20)
@@ -356,7 +349,6 @@ class APIUsageLog(SQLModel, TenantScopedMixin, table=True):
     log_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     api_key_id: Optional[UUID] = Field(default=None, foreign_key="api_keys.api_key_id", index=True)
     project_id: int = Field(foreign_key="api_projects.project_id", index=True, nullable=False)
 
@@ -403,7 +395,6 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     subscription_id: Optional[int] = Field(default=None, primary_key=True)
     
     # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False, unique=True)
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # stripe
@@ -423,6 +414,11 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     # create relationships
     plan: Optional[Plan] = Relationship(back_populates="subscriptions")   
     tenant: Optional[Tenant] = Relationship(back_populates="subscriptions")   
+    
+    __table_args__ = (
+        # single-column unique constraint handled at the table level
+        sa.UniqueConstraint("tenant_id", name="uq_tenant_id_single"),
+    )
 
     
     
@@ -453,9 +449,6 @@ class BillingAudit(SQLModel, TenantScopedMixin, table=True):
 
     billing_id: Optional[int] = Field(default=None, primary_key=True)
     
-    # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
-    
     event_type: str = Field(max_length=100)
     stripe_event_id: str = Field(max_length=255, index=True, unique=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -476,8 +469,7 @@ class StripeCheckoutSession(SQLModel, TenantScopedMixin, table=True):
     stripe_customer_id: str = Field(max_length=255, nullable=False, index=True)
     stripe_subscription_id: Optional[str] = Field(default=None, max_length=255, index=True)
     
-    # add foreign keys
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True)
+    # add foreign key
     plan_id: int = Field(foreign_key="plans.plan_id", index=True)
     
     # ex., "open", "completed", "expired"
@@ -500,9 +492,6 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "credit_logs"
 
     credit_log_id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # add foreign key
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False, index=True)
 
     amount: int = Field(nullable=False)
     balance_after: int = Field(nullable=False)
@@ -523,7 +512,6 @@ class AuditLog(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
     
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
