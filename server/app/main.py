@@ -14,8 +14,6 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.rate_limit.limiter import limiter
-from app.models import AuditLog, TenantScopedMixin
-from sqlalchemy import event 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.cores.redis import redis_client
 from app.cores.middleware import(
@@ -37,10 +35,6 @@ from app.cruds.platform import users
 from app.cruds.platform import global_admins, login, social_login
 from app.cruds.tenant import admin_router, members_router, tenant_router
 from app.cruds.api_project import api 
-from sqlalchemy import event
-from sqlalchemy.orm import Session, Mapper
-from sqlalchemy.orm import with_loader_criteria
-from app.utility.tenant.tenant_router import current_tenant_id, bypass_rls
 from guard import SecurityMiddleware
 from app.cores.security import security_config
 from starlette.middleware.sessions import SessionMiddleware
@@ -56,69 +50,10 @@ setup_logging()
 
 
 # retrieve social-login secret-key
-authlib_secret_key=os.getenv("AUTHLIB_SECRET_KEY")
-
-
-
-
-# add event listener to prevent delete/upgrade of audit table
-@event.listens_for(AuditLog, "before_update")
-def prevent_update(mapper, connection, target):
-    raise ValueError("Audit logs cannot be modified")
-
-@event.listens_for(AuditLog, "before_delete")
-def prevent_delete(mapper, connection, target):
-    raise ValueError("Audit logs cannot be deleted")
-
-
-
-
-
-# event hanlers to auto add tenant_id/bypass
-@event.listens_for(Session, "do_orm_execute")
-def add_tenant_filter(execute_state):
+authlib_secret_key=os.getenv("AUTHLIB_SECRET_KEY")    
     
-    # only apply to SELECT queries
-    if not execute_state.is_select:
-        return
-    
-    # skip tenant filtering when explicitly bypassing RLS
-    if bypass_rls.get():
-        return
-    
-    tenant_id = current_tenant_id.get()
 
-    if tenant_id is None:
-        return
 
-    execute_state.statement = execute_state.statement.options(
-        with_loader_criteria(
-            TenantScopedMixin,
-            lambda cls: cls.tenant_id == tenant_id,
-            include_aliases=True
-        )
-    )
-    
-    
-@event.listens_for(Session, "before_flush")
-def set_tenant_id(session, flush_context, instances):
-
-    tenant_id = current_tenant_id.get()
-
-    if tenant_id is None:
-        return
-
-    for obj in session.new:
-
-        if hasattr(obj, "tenant_id"):
-            current_value = getattr(obj, "tenant_id", None)
-            if current_value is None:
-                setattr(obj, "tenant_id", tenant_id)
-
-    
-    
-    
-    
 # application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -127,7 +62,6 @@ async def lifespan(app: FastAPI):
 
     # close redis connection pool
     await redis_client.close()
-        
         
         
         
@@ -149,7 +83,6 @@ app.add_exception_handler(ValueError, value_error_handler)
 
 
 
-
 # add middlewares
 app.add_middleware(CustomCORSMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -167,7 +100,6 @@ app.add_middleware(
 )
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(SlowAPIMiddleware)
-
 
 
 

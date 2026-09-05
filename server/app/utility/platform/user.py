@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from jwt import PyJWKError, ExpiredSignatureError
 from sqlmodel import select, or_
 from app.models import RolePermission, Role, Permission, User, AuditLog
+from sqlalchemy import event
 
 
 
@@ -264,3 +265,16 @@ def slugify(text: str) -> str:
 # normalization function
 def normalize_identifier(identifier: str) -> str:
     return identifier.strip().lower()
+
+
+
+
+# add event listener to prevent delete/update of audit table
+@event.listens_for(AuditLog, "before_update")
+def prevent_update(mapper, connection, target):
+    raise ValueError("Audit logs cannot be modified")
+
+
+@event.listens_for(AuditLog, "before_delete")
+def prevent_delete(mapper, connection, target):
+    raise ValueError("Audit logs cannot be deleted")

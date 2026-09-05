@@ -2,6 +2,7 @@
 import pytest
 from sqlmodel import select
 from app.models import Tenant, ApiProject, Plan
+from sqlalchemy.orm import session
 from app.utility.tenant.tenant_router import current_tenant_id
 
 
@@ -21,7 +22,7 @@ async def test_tenant_isolation(
     db.add(default_plan)
     await db.flush()
     
-    # Create Tenant A
+    # create tenant A
     tenant_a = Tenant(
         name="Tenant A",
         type="team",
@@ -34,7 +35,7 @@ async def test_tenant_isolation(
     await db.flush()
 
 
-    # Create Tenant B
+    # create tenant B
     tenant_b = Tenant(
         name="Tenant B",
         type="team",
@@ -46,20 +47,20 @@ async def test_tenant_isolation(
     db.add(tenant_b)
     await db.flush()
 
-    # Create projects for Tenant A
+    # create projects for tenant A
     token = current_tenant_id.set(tenant_a.tenant_id)
 
     try:
         project_a1 = ApiProject(
             name="Project A1",
-            tenant_id=tenant_a.tenant_id,
             description="Tenant A project",
             environment="live"
         )
 
+
+
         project_a2 = ApiProject(
             name="Project A2",
-            tenant_id=tenant_a.tenant_id,
             description="Tenant A second project",
             environment="test"
         )
@@ -72,15 +73,14 @@ async def test_tenant_isolation(
     finally:
         current_tenant_id.reset(token)
 
-    # Create project for Tenant B
+    # create project for tenant B
     token = current_tenant_id.set(tenant_b.tenant_id)
 
     try:
         project_b1 = ApiProject(
             name="Project B1",
-            tenant_id=tenant_b.tenant_id,
             description="Tenant B project",
-            environment="live",
+            environment="live"
         )
 
         db.add(project_b1)
@@ -90,13 +90,13 @@ async def test_tenant_isolation(
     finally:
         current_tenant_id.reset(token)
 
-    # Verify tenant IDs were automatically assigned
+    # verify tenant IDs were automatically assigned
     assert project_a1.tenant_id == tenant_a.tenant_id
     assert project_a2.tenant_id == tenant_a.tenant_id
     assert project_b1.tenant_id == tenant_b.tenant_id
 
 
-    # Tenant A should see ONLY Tenant A projects
+    # tenant A should see ONLY Tenant A projects
     token = current_tenant_id.set(tenant_a.tenant_id)
 
     try:
@@ -127,7 +127,7 @@ async def test_tenant_isolation(
     )
 
 
-    # Tenant B should see ONLY Tenant B projects
+    # tenant B should see ONLY tenant B projects
     token = current_tenant_id.set(tenant_b.tenant_id)
 
     try:
@@ -145,6 +145,6 @@ async def test_tenant_isolation(
     assert projects[0].project_id == project_b1.project_id
     assert projects[0].tenant_id == tenant_b.tenant_id
 
-    # Tenant A projects must not be visible.
+    # tenant A projects must not be visible.
     assert projects[0].project_id != project_a1.project_id
     assert projects[0].project_id != project_a2.project_id

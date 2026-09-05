@@ -1,7 +1,7 @@
 # import dependencies
-import pytest_asyncio, os
+import pytest_asyncio, os, sqlite3
 
-# Inject dummy or test environment variables so imports don't fail during test collection
+# inject dummy or test environment variables so imports don't fail during test collection
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "mock_redis_password")
@@ -9,17 +9,15 @@ os.environ.setdefault("SECRET_KEY", "test_secret_key")
 
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy import event, type_coerce, Uuid
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import Session, with_loader_criteria
+import app.utility.tenant.tenant_router
 from app.utility.tenant.tenant_router import current_tenant_id
-from app.models import TenantScopedMixin
-import sqlite3
 from uuid import UUID
 
-# import your models so SQLModel.metadata contains all tables.
+# import your models so SQLModel.metadata contains all tables
 from app.models import (
     Role,
     Permission,
@@ -56,12 +54,12 @@ test_engine = create_async_engine(
 
 
 
-# Tell SQLite how to adapt Python UUID to a string
+# tell SQLite how to adapt Python UUID to a string
 sqlite3.register_adapter(UUID, lambda u: str(u))
 
-# Tell SQLite how to convert a database string back to a Python UUID (if needed)
+# tell SQLite how to convert a database string back to a Python UUID (if needed)
 sqlite3.register_converter("GUID", lambda v: UUID(v.decode("utf-8")))
-sqlite3.register_converter("VARCHAR", lambda v: UUID(v.decode("utf-8")) if len(v) == 36 else v) # Optional fallback
+sqlite3.register_converter("VARCHAR", lambda v: UUID(v.decode("utf-8")) if len(v) == 36 else v)
 
 
 
@@ -112,29 +110,6 @@ async def setup_test_database():
         await conn.run_sync(SQLModel.metadata.drop_all)
 
     await test_engine.dispose()
-
-
-
-@event.listens_for(Session, "do_orm_execute")
-def add_tenant_isolation_filter(execute_state):
-    """
-    Automatically apply tenant isolation filtering to all SELECT queries
-    if a tenant ID is active in the context variable.
-    """
-    # Only intercept select statements (ignore inserts, updates, deletes)
-    if execute_state.is_select and not execute_state.is_column_load:
-        tenant_id = current_tenant_id.get()
-        if tenant_id:
-            # Apply the filter to any model inheriting from TenantScopedMixin
-            execute_state.statement = execute_state.statement.options(
-                with_loader_criteria(
-                    TenantScopedMixin,
-                    lambda cls: cls.tenant_id == type_coerce(tenant_id, Uuid()),
-                    include_aliases=True,
-                    track_closure_variables=False
-                )
-            )
-
 
 
 

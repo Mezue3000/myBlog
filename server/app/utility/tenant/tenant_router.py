@@ -1,6 +1,6 @@
 # import dependencies
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.models import Tenant, TenantMembership, User, TenantInvitation, Plan
+from app.models import Tenant, TenantMembership, User, TenantInvitation, Plan, TenantScopedMixin
 from sqlmodel import select, func
 from fastapi import HTTPException, status, Depends, Header, Request
 from app.utility.platform.user import get_current_active_user
@@ -8,7 +8,8 @@ from app.utility.platform.database import get_db
 from typing import Optional
 from uuid import UUID
 import secrets
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, Session, Mapper, with_loader_criteria
+from sqlalchemy import event, type_coerce, Uuid
 from pydantic import EmailStr
 from datetime import datetime, timezone
 from contextvars import ContextVar
@@ -307,8 +308,58 @@ async def count_active_non_owner_members(
 
 
 
+# event hanlers to auto add tenant_id/bypass
+@event.listens_for(Session, "do_orm_execute")
+def add_tenant_filter(execute_state):
+
+    if not execute_state.is_select:
+        return
+
+    if bypass_rls.get():
+        return
+
+    tenant_id = current_tenant_id.get()
+
+    if tenant_id is None:
+        return
+
+    execute_state.statement = execute_state.statement.options(
+        with_loader_criteria(
+            TenantScopedMixin,
+            lambda cls: cls.tenant_id == type_coerce(tenant_id, Uuid()),
+            include_aliases=True
+        )
+    )
+
+
+
+@event.listens_for(Session, "before_flush")
+def set_tenant_id(session, flush_context, instances):
+
+    tenant_id = current_tenant_id.get()
+
+    if tenant_id is None:
+        return
+
+    for obj in session.new:
+
+        if not isinstance(obj, TenantScopedMixin):
+            continue
+
+        obj_tenant_id = getattr(obj, "tenant_id", None)
+
+        if obj_tenant_id is None:
+            setattr(obj, "tenant_id", tenant_id)
+
+        elif obj_tenant_id != tenant_id:
+            raise ValueError("Cannot create a tenant-scoped object for a different tenant.")
+
+
+
+
+
 # store tenant context
-current_tenant_id = ContextVar("current_tenant_id", default=None)
+current_tenant_id: ContextVar[UUID | None] = ContextVar("current_tenant_id", default=None)
 
 bypass_rls = ContextVar("bypass_rls", default=False)
 

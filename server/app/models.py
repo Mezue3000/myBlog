@@ -304,7 +304,7 @@ class ApiProject(SQLModel, TenantScopedMixin, table=True):
 
 
 # create api-key model
-class APIKey(SQLModel, TenantScopedMixin, table=True):
+class APIKey(SQLModel, table=True):
     __tablename__ = "api_keys"
 
     api_key_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
@@ -312,7 +312,7 @@ class APIKey(SQLModel, TenantScopedMixin, table=True):
     # add foreign key
     project_id: int = Field(foreign_key="api_projects.project_id", nullable=False, index=True)
     
-    key_hash: str = Field(max_length=255, nullable=False, unique=True, index=False)
+    key_hash: str = Field(max_length=255, nullable=False, unique=True)
     key_prefix: str = Field(max_length=30, nullable=False)
     name: str = Field(max_length=100, nullable=False)
     is_revoked: bool = Field(default=False)
