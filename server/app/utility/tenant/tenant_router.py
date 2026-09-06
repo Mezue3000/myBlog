@@ -353,10 +353,7 @@ def set_tenant_id(session, flush_context, instances):
             setattr(obj, "tenant_id", tenant_id)
 
         elif obj_tenant_id != tenant_id:
-            raise ValueError(
-                "Cannot create a tenant-scoped object "
-                "for a different tenant."
-            )
+            raise ValueError("Cannot create a tenant-scoped object for a different tenant.")
 
     # modified objects
     for obj in session.dirty:

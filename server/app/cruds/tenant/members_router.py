@@ -8,7 +8,7 @@ from app.models import User
 from app.utility.platform.user import get_current_active_user 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.services.tenant.admin_router import accept_invitation_service, register_invited_member
+from app.services.tenant.members_router import accept_invitation_service, register_invited_member
 from app.schemas.platform.users import UserCreate
 
 

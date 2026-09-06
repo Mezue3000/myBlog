@@ -83,6 +83,7 @@ app.add_exception_handler(ValueError, value_error_handler)
 
 
 
+
 # add middlewares
 app.add_middleware(CustomCORSMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -103,14 +104,15 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 
+
 # add routers
 app.include_router(login.router)
+app.include_router(social_login.router)
 app.include_router(users.router)
 app.include_router(global_admins.router) 
+app.include_router(tenant_router.router)
 app.include_router(admin_router.router)
 app.include_router(members_router.router)
-app.include_router(tenant_router.router)
-app.include_router(social_login.router)
 app.include_router(api.router)
 app.include_router(billing.router)
 app.include_router(webhook.router)

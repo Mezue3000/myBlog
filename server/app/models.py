@@ -3,7 +3,7 @@ from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON, Text
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
-from sqlalchemy.orm import Mapped, declared_attr
+from sqlalchemy.orm import Mapped
 import sqlalchemy as sa, future_uuid
 from sqlalchemy import ForeignKey
 from decimal import Decimal
@@ -55,17 +55,10 @@ class Permission(SQLModel, table=True):
 
 # tenant-scoped auto-marker mixin
 class TenantScopedMixin:
-    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", nullable=False)
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", index=True, nullable=False)
 
-    @declared_attr
-
-    def __table_args__(cls) -> tuple:
-        return (
-            sa.Index(f"ix_{cls.__tablename__}_tenant_id", "tenant_id"),
-        )
 
  
-
 
 
 # create user model

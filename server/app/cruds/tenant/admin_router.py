@@ -12,7 +12,7 @@ from app.utility.tenant.admin_router import require_admin, require_owner
 from pydantic import EmailStr
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from app.services.tenant.admin_router import invite_members_service, accept_invitation_service, register_invited_member, delete_member_service, deactivate_member_service, activate_member_service
+from app.services.tenant.admin_router import invite_members_service, delete_member_service, deactivate_member_service, activate_member_service
 from app.schemas.platform.users import UserCreate
 
 
