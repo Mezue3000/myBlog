@@ -1,7 +1,7 @@
 # import dependencies
-import pytest_asyncio, os, sqlite3
+import pytest_asyncio, os
 
-# inject dummy or test environment variables so imports don't fail during test collection
+# inject dummy/test environment variables 
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "mock_redis_password")
@@ -16,8 +16,6 @@ from sqlalchemy.pool import StaticPool
 import app.utility.tenant.tenant_router
 from app.utility.tenant.tenant_router import current_tenant_id
 from uuid import UUID
-
-# import your models so SQLModel.metadata contains all tables
 from app.models import (
     Role,
     Permission,
@@ -51,15 +49,6 @@ test_engine = create_async_engine(
     },
     poolclass=StaticPool
 )
-
-
-
-# tell SQLite how to adapt Python UUID to a string
-sqlite3.register_adapter(UUID, lambda u: str(u))
-
-# tell SQLite how to convert a database string back to a Python UUID (if needed)
-sqlite3.register_converter("GUID", lambda v: UUID(v.decode("utf-8")))
-sqlite3.register_converter("VARCHAR", lambda v: UUID(v.decode("utf-8")) if len(v) == 36 else v)
 
 
 
@@ -117,7 +106,7 @@ async def setup_test_database():
 @pytest_asyncio.fixture
 async def db():
     """
-    Provide a fresh AsyncSession to each test.
+    provide a fresh AsyncSession to each test.
     """
 
     async with TestSessionLocal() as session:

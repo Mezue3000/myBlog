@@ -341,6 +341,7 @@ def set_tenant_id(session, flush_context, instances):
     if tenant_id is None:
         return
 
+    # new objects
     for obj in session.new:
 
         if not isinstance(obj, TenantScopedMixin):
@@ -352,7 +353,32 @@ def set_tenant_id(session, flush_context, instances):
             setattr(obj, "tenant_id", tenant_id)
 
         elif obj_tenant_id != tenant_id:
-            raise ValueError("Cannot create a tenant-scoped object for a different tenant.")
+            raise ValueError(
+                "Cannot create a tenant-scoped object "
+                "for a different tenant."
+            )
+
+    # modified objects
+    for obj in session.dirty:
+
+        if not isinstance(obj, TenantScopedMixin):
+            continue
+
+        obj_tenant_id = getattr(obj, "tenant_id", None)
+
+        if obj_tenant_id != tenant_id:
+            raise ValueError("Cannot move a tenant-scoped object to a different tenant.")
+        
+    # deleted objects
+    for obj in session.deleted:
+
+        if not isinstance(obj, TenantScopedMixin):
+            continue
+
+        obj_tenant_id = getattr(obj, "tenant_id", None)
+
+        if obj_tenant_id != tenant_id:
+            raise ValueError("Cannot delete a tenant-scoped object belonging to a different tenant.")
 
 
 

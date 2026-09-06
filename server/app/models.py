@@ -416,7 +416,6 @@ class Subscription(SQLModel, TenantScopedMixin, table=True):
     tenant: Optional[Tenant] = Relationship(back_populates="subscriptions")   
     
     __table_args__ = (
-        # single-column unique constraint handled at the table level
         sa.UniqueConstraint("tenant_id", name="uq_tenant_id_single"),
     )
 
