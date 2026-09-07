@@ -6,6 +6,7 @@ from app.utility.tenant.tenant_router import current_tenant_id
 from tests.conftest import TestSessionLocal
 
 
+
 async def query_projects_for_tenant(tenant_id):
     """
     Simulate one request running under a specific tenant context.
@@ -108,7 +109,7 @@ async def test_concurrent_tasks_are_tenant_isolated(db):
     # run tenant A and tenant B requests concurrently
     projects_a, projects_b = await asyncio.gather(
         query_projects_for_tenant(tenant_a.tenant_id),
-        query_projects_for_tenant(tenant_b.tenant_id),
+        query_projects_for_tenant(tenant_b.tenant_id)
     )
 
     # verify tenant A only sees tenant A
