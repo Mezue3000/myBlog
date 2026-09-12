@@ -61,3 +61,11 @@ def email_username_key_func(request: Request):
         )
 
     return f"login:{identifier}"
+
+
+
+
+# 2fa key function
+def two_fa_key_func(request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    return f"2fa:ip:{client_ip}"

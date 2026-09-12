@@ -53,7 +53,7 @@ async def authenticate_users(
     
     # validate user
     validate_user_credentials(user)
-    
+        
     # validate password
     try:
         await validate_password(password, user.password_hash)
@@ -67,18 +67,23 @@ async def authenticate_users(
     trusted_device = request.cookies.get("trusted_device")
 
     if trusted_device and await is_trusted_device(user.user_id, trusted_device):
-        # extract context metas
+        
+        # get personal tenant once
+        tenant = await get_personal_tenant(user.user_id, db)
+        
         context = build_audit_context(request)
         
-        # audit-log success (bypass 2FA)
+        # audit-log successful trusted-device login
         background_tasks.add_task(
-            create_auth_audit_log_bg,        
+            create_auth_audit_log_bg,
             action="LOGIN_SUCCESS",
             user_id=user.user_id,
+            tenant_id=tenant.tenant_id,
             metadata={"method": "trusted_device"},
             context=context
         )
-        return await handle_trusted_device_login(user, response)
+
+        return await handle_trusted_device_login(user=user, tenant=tenant, response=response)
 
     # handle 2FA challenge
     return await handle_2fa_challenge(user=user, background_tasks=background_tasks)
@@ -92,11 +97,11 @@ async def confirm_2fa(
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
-    data: TwoFAVerify,    
+    payload: TwoFAVerify,    
     db: AsyncSession
 ):
     # verify OTP → returns email
-    email = await verify_email_otp(otp_code=data.otp, scope="2FA")
+    email = await verify_email_otp(otp_code=payload.otp, scope="2FA")
 
     # fetch user
     user = await get_user_by_email(db, email)
@@ -105,7 +110,7 @@ async def confirm_2fa(
     validate_2fa_user(user)
 
     # get personal tenant/workspace
-    tenant = await get_personal_tenant(user.user_id, db)
+    tenant = await get_personal_tenant(user.user_id, db) 
     
     # generate tokens
     tokens = await generate_auth_tokens(user)
@@ -114,7 +119,7 @@ async def confirm_2fa(
     set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"], tokens["csrf_token"])
 
     # remember device 
-    if data.remember_device:
+    if payload.remember_device:
         await handle_remember_device(user, response)
     
     # extract context metas
@@ -125,7 +130,8 @@ async def confirm_2fa(
         create_auth_audit_log_bg,        
         action="2FA_SUCCESS",
         user_id=user.user_id,
-        metadata={"remember_device": data.remember_device},
+        tenant_id=tenant.tenant_id,
+        metadata={"remember_device": payload.remember_device},
         context=context
     )
 

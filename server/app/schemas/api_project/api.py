@@ -12,7 +12,6 @@ from pydantic import ConfigDict
 # create project schema
 class ApiProjectCreate(SQLModel):
     name: str = Field(max_length=100)
-    project_name: str  
     description: Optional[str] = Field(default=None, max_length=500)
     
     

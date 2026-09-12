@@ -9,6 +9,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import User, Role, AuditLog
 from app.utility.platform.user import get_current_active_user, logout_all_devices_for_user, validate_unique_fields
 from uuid import UUID
+from app.utility.tenant.tenant_router import get_tenant_owner
+from app.utility.platform.global_admin import ROLE_HIERARCHY
 
 
 
@@ -184,8 +186,8 @@ async def admins_deactivate_user(
     await persist_with_audit(
         db=db,
         request=request,
-        current_user=current_user,
-        target_user=target_user,
+        actor=current_user,
+        target=target_user,
         action="DEACTIVATE_USER",
         changes=changes,
         update_callback=lambda user: setattr(user, "is_active", False)
@@ -236,8 +238,8 @@ async def admin_get_user_activated(
     await persist_with_audit(
         db=db,
         request=request,
-        current_user=current_user,
-        target_user=target_user,
+        actor=current_user,
+        target=target_user,
         action="ACTIVATE_USER",
         changes=changes,
         update_callback=lambda user: setattr(user, "is_active", True)
@@ -363,19 +365,33 @@ async def admin_restore_user_account(
 
 # **********************Tenants Tenants Tenants*************************
 
+
+
 # function to retrieve tenants with pagination
 async def get_paginated_tenants(
     *,
     page: int,
     size: int,
     search: Optional[str],
+    tenant_type: Optional[str],
+    plan: Optional[str],
     is_active: Optional[bool],
     is_deleted: Optional[bool],
     current_user: User,
     db: AsyncSession
-):
+) -> PaginatedTenants:
+
     # validate access
     validate_admin_access(current_user)
+
+    # determine current admin's hierarchy level
+    current_level = ROLE_HIERARCHY.get(current_user.role.name)
+
+    if current_level is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to view tenants"
+        )
 
     # log admin action
     logger.info(
@@ -386,8 +402,10 @@ async def get_paginated_tenants(
             "size": size,
             "filters": {
                 "search": search,
+                "tenant_type": tenant_type,
+                "plan": plan,
                 "is_active": is_active,
-                "is_deleted": is_deleted,
+                "is_deleted": is_deleted
             },
         },
     )
@@ -395,15 +413,19 @@ async def get_paginated_tenants(
     # build filters
     filters = build_tenant_filters(
         search=search,
+        tenant_type=tenant_type,
+        plan=plan,
         is_active=is_active,
         is_deleted=is_deleted,
+        current_level=current_level
     )
 
-    # count query
+    # count tenants
     total_tenants = await count_tenants(db=db, filters=filters)
 
     # pagination
     offset = (page - 1) * size
+
     total_pages = (
         ceil(total_tenants / size)
         if total_tenants > 0
@@ -415,25 +437,25 @@ async def get_paginated_tenants(
         db=db,
         filters=filters,
         offset=offset,
-        limit=size,
+        limit=size
     )
-    
+
+    # build response items
     tenant_items = [
         TenantSummary(
             tenant_id=row["tenant"].tenant_id,
             name=row["tenant"].name,
-            slug=row["tenant"].slug,
             is_active=row["tenant"].is_active,
             is_deleted=row["tenant"].is_deleted,
             owner_name=row["owner_name"],
             owner_email=row["owner_email"],
             member_count=row["member_count"],
-            created_at=row["tenant"].created_at,
+            created_at=row["tenant"].created_at
         )
         for row in tenants
     ]
-    
-    # response
+
+    # return paginated response
     return PaginatedTenants(
         items=tenant_items,
         total=total_tenants,
@@ -441,7 +463,6 @@ async def get_paginated_tenants(
         size=size,
         total_pages=total_pages
     )
-
 
 
 
@@ -454,11 +475,18 @@ async def admins_deactivate_tenant(
     current_user: User,
     db: AsyncSession
 ):
+    
     # fetch target tenant
     target_tenant = await get_tenant_by_id(
         db=db,
-        tenant_id=tenant_id,
+        tenant_id=tenant_id
     )
+
+    if target_tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
 
     # add logging
     logger.info(
@@ -469,9 +497,15 @@ async def admins_deactivate_tenant(
         },
     )
 
+    # resolve actual tenant owner
+    resource_owner = await get_tenant_owner(
+        tenant=target_tenant,
+        db=db
+    )
+
     # enforce RBAC hierarchy
     verify_admin_ownership(
-        resource_owner=target_tenant,
+        resource_owner=resource_owner,
         current_user=current_user
     )
 
@@ -484,7 +518,12 @@ async def admins_deactivate_tenant(
     )
 
     # apply state change + audit
-    changes = {"is_active": {"old": True, "new": False}}
+    changes = {
+        "is_active": {
+            "old": True,
+            "new": False
+        }
+    }
 
     await persist_tenant_with_audit(
         db=db,
@@ -496,7 +535,9 @@ async def admins_deactivate_tenant(
         update_callback=lambda tenant: setattr(tenant, "is_active", False)
     )
 
-    return {"detail": "Tenant deactivated successfully"}
+    return {
+        "detail": "Tenant deactivated successfully"
+    }
 
 
 
@@ -525,9 +566,16 @@ async def admins_activate_tenant(
         },
     )
 
-    # RBAC check
+    
+    # resolve actual tenant owner
+    resource_owner = await get_tenant_owner(
+        tenant=target_tenant,
+        db=db
+    )
+
+    # enforce RBAC hierarchy
     verify_admin_ownership(
-        resource_owner=target_tenant,
+        resource_owner=resource_owner,
         current_user=current_user
     )
 

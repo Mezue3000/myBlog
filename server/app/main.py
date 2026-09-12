@@ -18,7 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.cores.redis import redis_client
 from app.cores.middleware import(
     RequestIDMiddleware,
-    CacheRequestBodyMiddleware, 
+    # CacheRequestBodyMiddleware, 
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
     TenantContextMiddleware,
@@ -56,7 +56,7 @@ authlib_secret_key=os.getenv("AUTHLIB_SECRET_KEY")
 
 # application lifespan
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI): 
     async with guard_lifespan(app):
         yield
 
@@ -89,7 +89,7 @@ app.add_middleware(CustomCORSMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SecurityMiddleware, config=security_config)
 app.add_middleware(RequestIDMiddleware)
-app.add_middleware(CacheRequestBodyMiddleware)
+# app.add_middleware(CacheRequestBodyMiddleware)
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(
     SessionMiddleware, 

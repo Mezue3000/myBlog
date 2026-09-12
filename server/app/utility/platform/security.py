@@ -6,6 +6,7 @@ from fastapi import Request, Depends, Response, HTTPException, status, Backgroun
 from app.utility.platform.user import get_current_active_user 
 from app.models import User, AuditLog
 from typing import Optional
+from uuid import UUID
 from app.utility.platform.database import async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.email import create_email_otp, send_verification_otp_email, verify_email_otp
@@ -67,6 +68,7 @@ async def create_auth_audit_log_bg(
     *,
     action: str,
     user_id: Optional[int] = None,
+    tenant_id: UUID,
     metadata: dict,
     context: dict
 ):
@@ -74,6 +76,7 @@ async def create_auth_audit_log_bg(
         audit_entry = AuditLog(
             actor_id=user_id,
             target_user_id=user_id,
+            tenant_id=tenant_id,
             action=action,
             changes=metadata or {},
             **context
@@ -254,7 +257,7 @@ async def create_auth_audit_log_safe(
             action=action,
             user_id=user_id,
             metadata=metadata,
-            context=context,
+            context=context
         )
         
     except Exception:
@@ -299,16 +302,16 @@ def require_admin_role(*allowed_roles: str):
 
 # admin-role checker
 require_super_admin = require_admin_role(
-    "super_admin"
+    "superadmin"
 )
 
 require_admin = require_admin_role(
-    "super_admin",
+    "superadmin",
     "global_admin"
 )
 
 require_moderator = require_admin_role(
-    "super_admin",
+    "superadmin",
     "global_admin",
     "moderator"
 )

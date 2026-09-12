@@ -32,7 +32,7 @@ async def create_team_service(data: TenantCreate, current_user: User, db: AsyncS
         await validate_tenant_uniqueness(name=data.name, db=db)
 
         # extract slug from tenant-name
-        slug = slugify(data.name, db)
+        slug = slugify(data.name)
         
         # get tenant plan details
         free_plan = await get_plan_for_tenant_type(
@@ -94,7 +94,6 @@ async def get_tenants_service( current_user: User, db: AsyncSession):
             TenantRead(
                 tenant_id=str(tenant.tenant_id),
                 name=tenant.name,
-                slug=tenant.slug,
                 role=role
             )
             for tenant, role in results

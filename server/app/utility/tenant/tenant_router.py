@@ -128,32 +128,60 @@ async def get_active_tenant_membership(
 
 
 # function to validate tenant access
-async def validate_tenant_access(tenant: Tenant, current_user: User, db: AsyncSession):
+async def validate_tenant_access(
+    tenant: Tenant,
+    current_user: User,
+    db: AsyncSession
+) -> bool:
+
     # personal tenant
     if tenant.type == "personal":
         if tenant.owner_id != current_user.user_id:
-            raise ValueError("Access denied to personal tenant")
-        
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to personal tenant"
+            ) 
+
         return True
 
-    # team/api tenants
-    membership = await get_tenant_membership(
-        user_id=current_user.user_id,
-        tenant_id=tenant.tenant_id,
-        db=db
-    )
+    # headless API tenant
+    if tenant.type == "headless_api":
+        if tenant.owner_id != current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to API tenant"
+            )
 
-    if not membership:
-        raise ValueError("Access denied to tenant")
-    
-    return True
+        return True
+
+    # team tenant
+    if tenant.type == "team":
+        membership = await get_tenant_membership(
+            user_id=current_user.user_id,
+            tenant_id=tenant.tenant_id,
+            db=db
+        )
+
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to team tenant"
+            )
+
+        if not membership.is_active or membership.is_deleted:
+            raise ValueError("Tenant membership is inactive")
+
+        return True
+
+    # unknown tenant type
+    raise ValueError("Invalid tenant type")
 
 
 
 
 
 # fuction to get current tenant
-async def get_current_tenant(
+async def get_current_tenant( 
     request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -170,11 +198,11 @@ async def get_current_tenant(
     statement = (
         select(Tenant)
         .where(Tenant.tenant_id == tenant_id)
-        .options(selectinload(Tenant.plan).selectinload(Plan.features))
+        .options(selectinload(Tenant.plan))
     )
 
     result = await db.exec(statement)
-    tenant = result.scalar_one_or_none()
+    tenant = result.first()
     
     # ensure tenant is alive
     validate_tenant(tenant=tenant)
@@ -225,7 +253,6 @@ async def get_tenant_membership_by_email(
     )
 
     result = await db.exec(statement)
-
     return result.first()
 
 
@@ -246,7 +273,6 @@ async def has_active_invitation(
     )
 
     result = await db.exec(statement)
-
     return result.first() is not None
 
 
@@ -261,7 +287,6 @@ async def get_invitation_by_token(
     statement = select(TenantInvitation).where(TenantInvitation.token == token)
 
     result = await db.exec(statement)
-
     return result.first()
 
 
@@ -302,8 +327,81 @@ async def count_active_non_owner_members(
     )
 
     result = await db.exec(statement)
-
     return result.one()
+
+
+
+
+# function to resolve tenant types
+async def get_tenant_owner(
+    *,
+    tenant: Tenant,
+    db: AsyncSession
+) -> User:
+
+    # Personal / headless_api tenants
+    # Tenant.owner_id -> User.user_id
+    if tenant.type in {"personal", "headless_api"}:
+
+        if tenant.owner_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Tenant has no owner assigned"
+            )
+
+        statement = (
+            select(User)
+            .where(User.user_id == tenant.owner_id)
+            .options(selectinload(User.role))
+        )
+
+        result = await db.exec(statement)
+        owner = result.first()
+
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Tenant owner could not be found"
+            )
+
+        return owner
+    
+    # Team tenant
+    # Tenant.members -> TenantMembership.user -> User
+    if tenant.type == "team":
+
+        statement = (
+            select(User)
+            .join(
+                TenantMembership,
+                TenantMembership.user_id == User.user_id
+            )
+            .where(
+                TenantMembership.tenant_id == tenant.tenant_id,
+                TenantMembership.role == "owner",
+                TenantMembership.is_deleted.is_(False),
+                TenantMembership.is_active.is_(True)
+            )
+            .options(selectinload(User.role))
+        )
+
+        result = await db.exec(statement)
+        owner = result.first()
+
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Team tenant has no active owner"
+            )
+
+        return owner
+
+    # unknown tenant type
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Unknown tenant type '{tenant.type}'",
+    )
+
 
 
 
@@ -410,7 +508,6 @@ async def lock_tenant(tenant_id: UUID, db: AsyncSession) -> Tenant:
     )
 
     result = await db.exec(statement)
-
     tenant = result.first()
 
     if tenant is None:

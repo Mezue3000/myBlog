@@ -52,7 +52,6 @@ class UserUpdateRead(UserRead):
 class TenantSummary(SQLModel):
     tenant_id: UUID
     name: str
-    slug: str
     is_active: bool
     is_deleted: bool
     owner_name: str | None = None

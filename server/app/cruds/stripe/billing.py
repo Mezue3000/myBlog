@@ -1,5 +1,5 @@
 # import dependencies
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, Response
 from app.utility.tenant.admin_router import require_owner 
 from app.rate_limit.keys import tenant_key_func
 from app.rate_limit.policy import TENANT_LIMITS
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/v1/billings", tags=["tenant_billings"])
 @limiter.limit(TENANT_LIMITS["create_session"], key_func=tenant_key_func)
 async def create_checkout(
     request: Request,
+    response: Response,
     plan_id: int,
     current_tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),

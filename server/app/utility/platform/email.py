@@ -19,8 +19,9 @@ from app.cores.redis import redis_client
 logger = get_logger(__name__)
 
  
-# #  load environment variable
-# load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/.env")
+# load environment variables
+load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
+
 
 
 
@@ -204,7 +205,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
         )
         subject = "CargoMap Login Verification Code"
         endnote = (
-            "If you did not try to access your BlogMap account, "
+            "If you did not try to access your CargoMap account, "
             "please reset your password immediately."
         )
         
@@ -282,7 +283,8 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
     :root{{--bg:#fff;--text:#111;--otp-bg:#f8f9fa;--border:#e0e0e0;}}
     @media (prefers-color-scheme:dark){{:root{{--bg:#111;--text:#eee;--otp-bg:#333;--border:#444;}}}}
   </style>
-  <h1 style="margin:0 0 20px;color:var(--text);">BlogMap</h1>
+  <h1 style="margin:0 0 20px;color:var(--text);">Cargo
+  Map</h1>
   <p style="margin:0 0 12px;">Hi {email},</p>
   <p style="margin:0 0 20px;">{user_message}</p>
   <div style="background:var(--otp-bg);padding:16px 24px;margin:24px auto;max-width:240px;border-radius:10px;border:1px solid var(--border);">
@@ -293,7 +295,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
   <p style="margin:0 0 12px;font-size:14px;color:#666;">Expires in 7 minutes</p>
   <p style="margin:0 0 20px;">{endnote}</p>
   <div style="border-top: 1px solid #dddddd; margin: 25px 0; line-height: 1px; font-size: 1px;">&nbsp;</div>
-  <p style="margin:0;font-size:13px;color:#777;">Best regards,<br/>BlogMap Team</p>
+  <p style="margin:0;font-size:13px;color:#777;">Best regards,<br/>CargoMap Team</p>
 </div>
 """
     
@@ -310,8 +312,11 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
     # displayed by default on modern client
     message.add_alternative(html_content, subtype="html")
 
-    # Send email
+    # send email
     try:
+        # temporary local dev bypass
+        print(f"\n >>> [DEV OTP DEBUG] Code for 2FA: {otp} <<< \n")
+        
         await aiosmtplib.send(
             message,
             hostname=SMTP_HOST,

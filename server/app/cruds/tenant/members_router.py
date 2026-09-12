@@ -1,5 +1,5 @@
 # import dependencies
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import AUTH_LIMITS
 from app.rate_limit.keys import user_key_func
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/v1/register-membership",  tags=["tenant-members"])
 @limiter.limit(AUTH_LIMITS["accept_iv"], key_func=user_key_func)
 async def accept_invitation(
     request: Request,
+    response: Response,
     data: AcceptInvitationRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -47,6 +48,7 @@ async def accept_invitation(
 @limiter.limit(AUTH_LIMITS["register"], key_func=user_key_func)
 async def register_invited_user(
     request: Request,
+    response: Response,
     user: UserCreate,
     token: str,
     db: AsyncSession = Depends(get_db)

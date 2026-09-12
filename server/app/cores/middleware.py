@@ -3,6 +3,8 @@ from app.cores.logging import get_logger
 from fastapi import Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 import json, uuid
+from uuid import UUID
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.utility.tenant.tenant_router import current_tenant_id
 from app.cores.redis import redis_client
@@ -107,7 +109,7 @@ class CustomCORSMiddleware(CORSMiddleware):
             # Let frontend read the CSRF response header
             expose_headers=["X-CSRF-Token"],
             max_age=3600,
-            **kwargs,
+            **kwargs
         )
         
 
@@ -139,8 +141,19 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         tenant_id = getattr(request.state, "tenant_id", None)
 
         if not tenant_id:
-            # safely extract tenant via headers or subdomains 
-            tenant_id = request.headers.get("X-Tenant-ID") 
+            raw_tenant_id = request.headers.get("X-Tenant-ID")
+
+            if raw_tenant_id:
+                try:
+                    tenant_id = UUID(raw_tenant_id)
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": "Invalid X-Tenant-ID"
+                        },
+                    )
+
             request.state.tenant_id = tenant_id
 
         token = current_tenant_id.set(tenant_id)

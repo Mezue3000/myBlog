@@ -4,13 +4,12 @@ from cryptography.hazmat.primitives import serialization
 from app.cores.logging import get_logger
 from typing import Optional
 import json, secrets, os, pyotp, httpx, jwt
-from app.models import User
+from app.models import User, Tenant
 from pydantic import EmailStr
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, BackgroundTasks, Request, Response
 from app.cores.redis import redis_client
 from app.utility.platform.email import create_email_otp, send_verification_otp_email
-from app.utility.tenant.tenant_router import get_personal_tenant
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -24,7 +23,7 @@ fernet = Fernet(key)
 
 # load private key from file
 with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem.enc", "rb") as f:
-     ENCRYPTED_PRIVATE_KEY = f.read()
+    ENCRYPTED_PRIVATE_KEY = f.read()
 
 
 
@@ -41,7 +40,7 @@ logger = get_logger(__name__)
 
 # define jwt params
 ALGORITHM = "ES256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15 
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
@@ -253,27 +252,33 @@ def set_trusted_device_cookie(response: Response, device_id: str):
 
 
 # handle trusted device(for 2fa)
-async def handle_trusted_device_login(user: User, response: Response, db: AsyncSession):
-    # log info
-    logger.info("trusted_device_login", extra={"user_id": user.user_id})
-    
+async def handle_trusted_device_login(
+    user: User,
+    tenant: Tenant,
+    response: Response
+):
+    logger.info(
+        "trusted_device_login",
+        extra={"user_id": user.user_id}
+    )
+
     # generate tokens
     access_token = create_access_token(user.user_id)
     refresh_token = await create_refresh_token(user.user_id)
-    
-    # generate csrf token(double submit token)
+
+    # generate csrf token
     csrf_token = secrets.token_urlsafe(32)
-    
-    # get user's personal tenant/workspace
-    tenant = await get_personal_tenant(user.user_id, db)
-    
+
+    # set authentication cookies
     set_auth_cookies(response, access_token, refresh_token, csrf_token)
 
     return {
-        "access_token": access_token, 
-        "tenant_id": str(tenant.tenant_id), 
+        "access_token": access_token,
+        "tenant_id": str(tenant.tenant_id),
+        "name": tenant.name,
+        "type": tenant.type,
         "token_type": "bearer"
-    }  
+    }
     
     
     

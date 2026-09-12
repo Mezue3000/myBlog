@@ -92,12 +92,16 @@ ALGORITHM = "ES256"
 
 
 # function to get current user
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/v1/auth/token",
+    auto_error=False
+)
 
 credential_exception = HTTPException(
     status_code = status.HTTP_404_NOT_FOUND, 
     detail = "User not found", 
     headers = {"WWW-Authenticate": "Bearer"})
+    
     
 expired_token_error = HTTPException(
     status_code = status.HTTP_401_UNAUTHORIZED,
@@ -107,10 +111,12 @@ expired_token_error = HTTPException(
 
 async def get_current_user(
     request: Request,
-    token: str = Depends(oauth2_scheme), 
+    token: Optional[str] = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        token = token or request.cookies.get("access_token")
+        
         payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
         
         user_id: Optional[str] = payload.get("sub")

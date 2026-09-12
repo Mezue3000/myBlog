@@ -1,5 +1,5 @@
 # import dependencies
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request, Response
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import TENANT_LIMITS
 from app.rate_limit.keys import tenant_key_func
@@ -29,6 +29,7 @@ router = APIRouter(prefix="/v1/Tenant-admin",  tags=["tenant-admins"])
 @limiter.limit(TENANT_LIMITS["admin_iv"], key_func=tenant_key_func)
 async def invite_members(
     request: Request,
+    response: Response,
     tenant_id: UUID,
     data: InviteMembersRequest,
     background_tasks: BackgroundTasks,
@@ -61,6 +62,7 @@ async def invite_members(
 @limiter.limit(TENANT_LIMITS["admin_delete"], key_func=tenant_key_func)
 async def remove_member(
     request: Request,
+    response: Response,
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
@@ -84,6 +86,7 @@ async def remove_member(
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def deactivate_member(
     request: Request,
+    response: Response,
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
@@ -106,6 +109,7 @@ async def deactivate_member(
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def activate_member(
     request: Request,
+    response: Response,
     member_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),

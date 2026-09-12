@@ -7,8 +7,8 @@ from typing import Annotated, Optional, Callable, Any, Dict
 from sqlalchemy.orm import selectinload 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
-from sqlmodel import select, or_, func
-from app.models import User, Role, AuditLog, Tenant, TenantMembership
+from sqlmodel import select, or_, and_, func
+from app.models import User, Role, AuditLog, Tenant, TenantMembership, Plan
 from app.utility.platform.security import build_audit_context, create_auth_audit_log_bg
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from uuid import UUID
@@ -340,6 +340,8 @@ def ensure_user_state(
         
 # **************Tenants Tenants  Tenants*******************
 
+
+
 # function to build tenant filters
 def build_tenant_filters(
     *,
@@ -353,35 +355,63 @@ def build_tenant_filters(
 
     filters = []
 
-    # search
+    # search tenant and associated user information
     if search:
+        search_term = f"%{search}%"
+
         filters.append(
             or_(
-                Tenant.name.ilike(f"%{search}%"),
-                Tenant.slug.ilike(f"%{search}%"),
-                User.username.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%")
+                # Tenant fields
+                Tenant.name.ilike(search_term),
+                Tenant.slug.ilike(search_term),
+
+                # personal / headless-api:
+                # Tenant.owner_id -> User.user_id
+                and_(
+                    Tenant.type.in_(["personal", "headless_api"]),
+                    Tenant.owner.has(
+                        or_(
+                            User.username.ilike(search_term),
+                            User.email.ilike(search_term),
+                        )
+                    ),
+                ),
+
+                # Team:
+                # Tenant.members -> TenantMembership.user -> User
+                and_(
+                    Tenant.type == "team",
+                    Tenant.members.any(
+                        TenantMembership.user.has(
+                            or_(
+                                User.username.ilike(search_term),
+                                User.email.ilike(search_term)
+                            )
+                        )
+                    ),
+                ),
             )
         )
 
-    # type filter
+    # tenant type
     if tenant_type is not None:
         filters.append(Tenant.type == tenant_type)
 
-    # plan filter
+    # plan
     if plan is not None:
-        filters.append(Tenant.plan == plan)
+        filters.append(
+            Tenant.plan.has(Plan.name == plan)
+        )
 
-    # active filter
+    # active status
     if is_active is not None:
         filters.append(Tenant.is_active == is_active)
 
-    # deleted filter
+    # deleted status
     if is_deleted is not None:
         filters.append(Tenant.is_deleted == is_deleted)
-    
-    
-    # role visibility (strict downward)
+
+    # strict downward role visibility
     allowed_roles = [
         role_name
         for role_name, level in ROLE_HIERARCHY.items()
@@ -395,11 +425,37 @@ def build_tenant_filters(
         )
 
     filters.append(
-        User.role.has(Role.name.in_(allowed_roles))
-    )
-    
-    return filters
+        or_(
+            # Personal / headless_api:
+            # Tenant.owner_id -> User -> Role
+            and_(
+                Tenant.type.in_(["personal", "headless_api"]),
+                Tenant.owner.has(
+                    User.role.has(
+                        Role.name.in_(allowed_roles)
+                    )
+                ),
+            ),
 
+            # Team:
+            # Tenant.members -> TenantMembership -> User -> Role
+            and_(
+                Tenant.type == "team",
+                Tenant.members.any(
+                    and_(
+                        TenantMembership.role == "owner",
+                        TenantMembership.user.has(
+                            User.role.has(
+                                Role.name.in_(allowed_roles)
+                            )
+                        ),
+                    )
+                ),
+            ),
+        )
+    )
+
+    return filters
 
 
 
@@ -433,10 +489,73 @@ async def fetch_tenants(
     offset: int,
     limit: int
 ) -> list[Dict[str, Any]]:
+
+    # owner for personal / headless_api tenants
+    # Tenant.owner_id -> User.user_id
+    direct_owner_name = (
+        select(User.username)
+        .where(User.user_id == Tenant.owner_id)
+        .scalar_subquery()
+    )
+
+    direct_owner_email = (
+        select(User.email)
+        .where(User.user_id == Tenant.owner_id)
+        .scalar_subquery()
+    )
+
+    # owner for team tenants
+    # Tenant -> TenantMembership(role="owner") -> User
+    team_owner_name = (
+        select(User.username)
+        .join(
+            TenantMembership,
+            TenantMembership.user_id == User.user_id,
+        )
+        .where(
+            TenantMembership.tenant_id == Tenant.tenant_id,
+            TenantMembership.role == "owner",
+            TenantMembership.is_deleted.is_(False),
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    team_owner_email = (
+        select(User.email)
+        .join(
+            TenantMembership,
+            TenantMembership.user_id == User.user_id,
+        )
+        .where(
+            TenantMembership.tenant_id == Tenant.tenant_id,
+            TenantMembership.role == "owner",
+            TenantMembership.is_deleted.is_(False),
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    # use the appropriate owner source based on tenant type
+    owner_name = func.coalesce(
+        direct_owner_name,
+        team_owner_name,
+    ).label("owner_name")
+
+    owner_email = func.coalesce(
+        direct_owner_email,
+        team_owner_email,
+    ).label("owner_email")
+
+    # main query
     statement = (
         select(
             Tenant,
-            func.count(TenantMembership.membership_id).label("member_count")
+            owner_name,
+            owner_email,
+            func.count(
+                TenantMembership.membership_id
+            ).label("member_count"),
         )
         .outerjoin(
             TenantMembership,
@@ -444,26 +563,30 @@ async def fetch_tenants(
             & (TenantMembership.is_deleted.is_(False))
         )
         .where(*filters)
-        .options(selectinload(Tenant.owner))  
-        .group_by(Tenant.tenant_id)         
-        .order_by(Tenant.created_at.desc())
+        .group_by(
+            Tenant.tenant_id,
+            owner_name,
+            owner_email,
+        )
+        .order_by(
+            Tenant.created_at.desc()
+        )
         .offset(offset)
         .limit(limit)
     )
 
     result = await db.exec(statement)
-    rows = result.all()  
+    rows = result.all()
 
     return [
         {
             "tenant": tenant,
-            "owner_name": tenant.owner.username if tenant.owner else None,
-            "owner_email": tenant.owner.email if tenant.owner else None,
-            "member_count": member_count
+            "owner_name": owner_name,
+            "owner_email": owner_email,
+            "member_count": member_count,
         }
-        for tenant, member_count in rows
+        for tenant, owner_name, owner_email, member_count in rows
     ]
-
 
 
 

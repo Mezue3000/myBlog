@@ -37,6 +37,7 @@ router = APIRouter(
 @limiter.limit(AUTH_LIMITS["get_data"], key_func=user_key_func)
 async def get_users_paginated(
     request: Request,
+    response: Response,
     *,
     page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
     size: Annotated[int, Query(ge=1, le=100, description="Items per page (max 100)")] = 10,
@@ -69,6 +70,7 @@ async def get_users_paginated(
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_update_user(
     request: Request,
+    response: Response,
     user_id: int,
     user_data: UserUpdate,
     current_user: User = Depends(get_current_active_user),
@@ -96,6 +98,7 @@ async def admin_update_user(
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_deactivate_user(
     request: Request,
+    response: Response,
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -117,6 +120,7 @@ async def admin_deactivate_user(
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
 async def admin_activate_user(
     request: Request,
+    response: Response,
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -138,6 +142,7 @@ async def admin_activate_user(
 @limiter.limit(AUTH_LIMITS["admin_delete"], key_func=user_key_func)
 async def admin_delete_user(
     request: Request,
+    response: Response,
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -153,12 +158,15 @@ async def admin_delete_user(
 
 
 # admin restore user endpoint
-@router.patch("/users/{user_id}/restore", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
+@router.patch(
+    "/users/{user_id}/restore", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def admin_restore_user(
     request: Request,
+    response: Response,
     user_id: int,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -182,6 +190,7 @@ async def admin_restore_user(
 @limiter.limit(AUTH_LIMITS["get_data"], key_func=user_key_func)
 async def get_tenants_paginated(
     request: Request,
+    response: Response,
     *,
     page: Annotated[int, Query(ge=1, description="Page number (starts at 1)")] = 1,
     size: Annotated[int, Query(ge=1, le=100, description="Items per page (max 100)")] = 10,
@@ -220,6 +229,7 @@ async def get_tenants_paginated(
 @limiter.limit(AUTH_LIMITS["admin_deactivate"], key_func=user_key_func)
 async def deactivate_tenant(
     request: Request,
+    response: Response,
     tenant_id: UUID,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
@@ -246,6 +256,7 @@ async def deactivate_tenant(
 @limiter.limit(AUTH_LIMITS["admin_restore"], key_func=user_key_func)
 async def activate_tenant(
     request: Request,
+    response: Response,
     tenant_id: UUID,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)

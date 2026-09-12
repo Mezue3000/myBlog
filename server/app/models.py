@@ -61,7 +61,7 @@ class TenantScopedMixin:
  
 
 
-# create user model
+# create user model(global-identifier) 
 class User(SQLModel, table=True):
     __tablename__ = "users"
     
@@ -500,13 +500,15 @@ class CreditLog(SQLModel, TenantScopedMixin, table=True):
 
 
 # create audit-log model
-class AuditLog(SQLModel, TenantScopedMixin, table=True):
+class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_logs"
 
     audit_id: Optional[int] = Field(default=None, primary_key=True)
     
     # who performed the action
     actor_id: int = Field(foreign_key="users.user_id", index=True)
+    
+    tenant_id: Optional[UUID] = Field(foreign_key="tenants.tenant_id", index=True, nullable=True)
 
     # who was affected(nullable for system events)
     target_user_id: Optional[int] = Field(default=None, foreign_key="users.user_id")

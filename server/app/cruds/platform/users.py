@@ -27,6 +27,7 @@ router = APIRouter(prefix="/v1/users", tags=["users"])
 @limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def start_registration(
     request: Request,
+    response: Response,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
@@ -42,7 +43,8 @@ async def start_registration(
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def complete_registration(
-    request: Request, 
+    request: Request,
+    response: Response,
     user: UserCreate,
     otp_code: str,
     db: AsyncSession = Depends(get_db)
@@ -74,6 +76,7 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
 @limiter.limit(AUTH_LIMITS["update_user"], key_func=user_key_func)
 async def update_user(
     request: Request,
+    response: Response,
     user_data: UserUpdate, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -89,6 +92,7 @@ async def update_user(
 @limiter.limit(AUTH_LIMITS["forgot_password"], key_func=user_key_func)
 async def update_password(
     request: Request,
+    response: Response,
     payload: UserPasswordUpdate, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -104,6 +108,7 @@ async def update_password(
 @limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def update_email(
     request: Request,
+    response: Response,
     payload: EmailUpdate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
@@ -126,6 +131,7 @@ async def update_email(
 @limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def complete_email_update(
     request: Request,
+    response: Response,
     otp_code: str, 
     current_user: User = Depends(get_current_user),
     db: AsyncSession=Depends(get_db)
@@ -142,6 +148,7 @@ async def complete_email_update(
 @limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def request_password_reset(
     request: Request,
+    response: Response,
     user_data: EmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
@@ -158,6 +165,7 @@ async def request_password_reset(
 @limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def confirm_password_reset(
     request: Request,
+    response: Response,
     data: PasswordResetConfirm, 
     db: AsyncSession = Depends(get_db)
 ):
@@ -182,6 +190,7 @@ async def logout_all_devices(request: Request, response: Response):
 @router.post("/me/delete/request", status_code=status.HTTP_200_OK, response_model=MessageResponse)
 async def request_delete_user_otp_endpoint(
     request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user)
 ):
@@ -201,6 +210,7 @@ async def request_delete_user_otp_endpoint(
 @limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
 async def delete_user_account_endpoint(
     request: Request,
+    response: Response,
     data: DeleteUserRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)

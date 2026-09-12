@@ -18,7 +18,6 @@ class TenantCreate(SQLModel):
 class TenantRead(SQLModel):
     tenant_id: UUID
     name: str
-    slug: str
     role: str
     
     model_config = ConfigDict(from_attributes=True)
@@ -52,7 +51,6 @@ class TenantBrandingUpdate(SQLModel):
 class TenantBrandingRead(SQLModel):
     tenant_id: UUID
     name: str
-    slug: str
     logo_url: Optional[str]
     primary_color: str
     

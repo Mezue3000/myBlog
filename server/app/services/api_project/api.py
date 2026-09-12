@@ -28,7 +28,6 @@ async def create_headless_api_service(
     *,
     data: ApiProjectCreate,
     current_user: User,
-    current_tenant: Tenant,
     db: AsyncSession
 ):
     try:
@@ -38,7 +37,7 @@ async def create_headless_api_service(
         await validate_tenant_uniqueness(name=data.name, db=db)
         
         # generate slug
-        slug = slugify(data.name, db)
+        slug = slugify(data.name)
         
         # retrieve API free plan
         free_plan = await get_plan_for_tenant_type(
@@ -54,7 +53,7 @@ async def create_headless_api_service(
             slug=slug,
             owner_id=current_user.user_id,
             plan_id=free_plan.plan_id,
-            credits_remaining=free_plan.credit_limit
+            credits_remaining=free_plan.credits
         )
 
         db.add(tenant)
@@ -63,18 +62,19 @@ async def create_headless_api_service(
         # validate project uniqueness
         await validate_project_uniqueness(
             tenant_id=tenant.tenant_id,
-            project_name=data.project_name,
+            project_name=data.name,
             db=db
         )
 
         # create first project
         project = ApiProject(
             tenant_id=tenant.tenant_id,
-            name=data.project_name,
+            name=data.name,
             description=data.description
         )
         
         db.add(project)
+        await db.flush()
         await db.commit()
 
         await db.refresh(tenant)
@@ -86,7 +86,7 @@ async def create_headless_api_service(
             f"project_id={project.project_id}"
         )
 
-        return {"tenant": tenant, "project": project}
+        return project
 
     except HTTPException:
         raise
@@ -99,7 +99,7 @@ async def create_headless_api_service(
     except Exception as e:
         await db.rollback()
         logger.error(f"Unexpected error creating API workspace: {str(e)}")
-        raise ValueError("Something went wrong")
+        raise ValueError("Something went wrong") from e
     
     
     
@@ -184,7 +184,7 @@ async def get_tenant_api_keys(
     # build response schemas cleanly via dot notation
     return [
         ApiKeyRead(
-            api_key_id=api_key.key_id,
+            api_key_id=api_key.api_key_id,
             project_id=api_key.project_id,
             project_name=api_key.project.name if api_key.project else "Unknown Project",
             name=api_key.name,

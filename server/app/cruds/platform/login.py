@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request, Response, BackgroundTasks
 from app.rate_limit.dependencies import attach_identifier
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import AUTH_LIMITS
-from app.rate_limit.keys import email_username_key_func
+from app.rate_limit.keys import email_username_key_func, two_fa_key_func
 from app.schemas.platform.jwts import Token
 from typing import Union
 from app.schemas.platform.users import EmailRequest, UserRead, UserCreate, TwoFAChallenge, PasswordResetConfirm
@@ -46,21 +46,21 @@ async def login(
 
 
 # endpoint for 2FA verification
-@router.post("/2fa/verify", dependencies=[Depends(attach_identifier)])
+@router.post("/2fa/verify")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
-@limiter.limit(AUTH_LIMITS["login"], key_func=email_username_key_func)
+@limiter.limit(AUTH_LIMITS["login"], key_func=two_fa_key_func)
 async def verify_2fa(
     request: Request,
     response: Response,
-    data: TwoFAVerify,
+    payload: TwoFAVerify,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     return await confirm_2fa(
         request=request,
         response=response, 
-        data=data,  
+        payload=payload,  
         background_tasks=background_tasks,
         db=db
     )

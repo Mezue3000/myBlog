@@ -9,7 +9,7 @@ from app.rate_limit.resolver import get_plan_feature
 # platform authentication policy
 AUTH_LIMITS = {
     "ip":"20/minute",
-    "login":"5/minute",
+    "login":"2/minute",
     "register":"3/minute",
     "update_user":"3/10minute",
     "update_email":"3/hour",
