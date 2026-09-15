@@ -140,9 +140,10 @@ async def confirm_2fa(
 
     return {
         "access_token": tokens["access_token"],
+        "csrf_token": tokens["csrf_token"],
         "tenant_id": str(tenant.tenant_id),
         "name": tenant.name,
-        "type": tenant.type, 
+        "tenant_type": tenant.type, 
         "token_type": "bearer"
     }
     
@@ -153,10 +154,10 @@ async def confirm_2fa(
 # function to refresh token
 async def refresh_session_token(request: Request, response: Response): 
     # extract refresh token from cookies
-    old_refresh_token = extract_refresh_token(request)
+    old_refresh_token = await extract_refresh_token(request)
 
     # rotate refresh token
-    new_refresh_token = await rotate_refresh_token(old_refresh_token, request)
+    new_refresh_token = await rotate_refresh_token(old_refresh_token)
 
     # get token payload from Redis
     payload = await get_refresh_token_payload(new_refresh_token, request)

@@ -133,7 +133,6 @@ async def get_active_plan(plan_id: int, db: AsyncSession) -> Plan:
     )
 
     result = await db.exec(statement)
-
     plan = result.first()
 
     if not plan:
@@ -248,7 +247,6 @@ async def get_webhook_event(
     )
 
     result = await db.exec(statement)
-    
     return result.first()
 
 

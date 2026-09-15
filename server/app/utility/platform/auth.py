@@ -21,6 +21,7 @@ key = os.getenv("SPIRIT_KEY")
 fernet = Fernet(key)
 
 
+
 # load private key from file
 with open("C:/Users/HP/Desktop/Python-Notes/myBlog/server/ec_private.pem.enc", "rb") as f:
     ENCRYPTED_PRIVATE_KEY = f.read()
@@ -274,12 +275,13 @@ async def handle_trusted_device_login(
 
     return {
         "access_token": access_token,
+        "csrf_token": csrf_token,
         "tenant_id": str(tenant.tenant_id),
         "name": tenant.name,
-        "type": tenant.type,
+        "tenant_type": tenant.type,
         "token_type": "bearer"
     }
-    
+
     
     
     

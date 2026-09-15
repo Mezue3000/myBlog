@@ -386,7 +386,7 @@ async def finalize_email_update(
 
 
 
-  
+
 # function to logout all devices
 async def signout_all_devices(
     request: Request,

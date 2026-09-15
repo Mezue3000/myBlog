@@ -50,5 +50,5 @@ async def test_tenant_context_middleware_sets_and_resets_context():
     assert data["tenant_id"] == str(tenant_id)
     assert data["tenant_id_type"] == "UUID"
 
-    # middleware must reset ContextVar
+    # middleware must reset contextvar
     assert current_tenant_id.get() is None

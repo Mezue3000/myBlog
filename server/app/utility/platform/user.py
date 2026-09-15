@@ -117,6 +117,9 @@ async def get_current_user(
     try:
         token = token or request.cookies.get("access_token")
         
+        if not token:
+            raise credential_exception
+        
         payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
         
         user_id: Optional[str] = payload.get("sub")

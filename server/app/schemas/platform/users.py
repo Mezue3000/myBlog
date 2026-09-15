@@ -164,7 +164,7 @@ class TwoFAChallenge(SQLModel):
 # schema for otp verification
 class TwoFAVerify(SQLModel): 
     otp: str
-    remember_device: bool = True
+    remember_device: bool = False
 
 
 

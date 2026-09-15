@@ -179,6 +179,20 @@ async def validate_tenant_access(
 
 
 
+# function to validate tenant
+def validate_tenant(tenant: Tenant):
+    
+    if tenant is None:
+        raise ValueError("Workspace not found.")
+    
+    if tenant.is_deleted:
+        raise ValueError("Workspace deleted.")
+    
+    if not tenant.is_active:
+        raise ValueError("Workspace suspended.")
+
+
+
 
 # fuction to get current tenant
 async def get_current_tenant( 
@@ -214,6 +228,8 @@ async def get_current_tenant(
         db=db
     )
     
+    current_tenant_id.set(tenant.tenant_id)
+
     request.state.tenant = tenant
     request.state.tenant_id = tenant.tenant_id
     request.state.tenant_plan = tenant.plan
@@ -288,24 +304,6 @@ async def get_invitation_by_token(
 
     result = await db.exec(statement)
     return result.first()
-
-
-
-
-
-# function to validate tenant
-def validate_tenant(tenant: Tenant):
-    
-    if tenant is None:
-        raise ValueError("Workspace not found.")
-    
-    if tenant.is_deleted:
-        raise ValueError("Workspace deleted.")
-    
-    if not tenant.is_active:
-        raise ValueError("Workspace suspended.")
-
-
 
 
 

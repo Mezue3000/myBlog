@@ -11,7 +11,7 @@ from app.rate_limit.keys import email_key_func, user_key_func
 from app.services.platform.user import initiate_registration, finalize_registration, change_password, initiate_email_update, finalize_email_update, delete_user_account, update_user_info, demand_password_reset, verify_password_reset, signout_all_devices, request_delete_user_otp
 from app.utility.platform.user import get_current_user, get_current_active_user
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
- 
+
 
 
 
@@ -38,10 +38,9 @@ async def start_registration(
 
  
 # create endpoint to complete user registration
-@router.post("/complete_registration", dependencies=[Depends(attach_email)], response_model=UserRead)
+@router.post("/complete_registration", response_model=UserRead)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
-@limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
 async def complete_registration(
     request: Request,
     response: Response,
@@ -128,7 +127,6 @@ async def update_email(
 @router.post("/complete_email_update", status_code=status.HTTP_200_OK)
 
 
-@limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def complete_email_update(
     request: Request,
     response: Response,
@@ -155,14 +153,13 @@ async def request_password_reset(
 ):
     return await demand_password_reset(email=user_data.email, background_tasks=background_tasks, db=db)
     
-
+ 
 
 
 # confirm reset password endpoint
-@router.post("/password-reset/confirm", dependencies=[Depends(attach_email)])
+@router.post("/password-reset/confirm")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
-@limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
 async def confirm_password_reset(
     request: Request,
     response: Response,
@@ -176,8 +173,8 @@ async def confirm_password_reset(
 
 # create all_device logout endpoint
 @router.post("/logout-all")
-async def logout_all_devices(request: Request, response: Response):
-    return await signout_all_devices(request=request, response=response)
+async def logout_all_devices(request: Request, response: Response, background_tasks: BackgroundTasks):
+    return await signout_all_devices(request=request, response=response, background_tasks=background_tasks)
    
 
 
@@ -207,7 +204,6 @@ async def request_delete_user_otp_endpoint(
 @router.patch("/me", status_code=status.HTTP_200_OK, response_model=MessageResponse)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
-@limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
 async def delete_user_account_endpoint(
     request: Request,
     response: Response,
