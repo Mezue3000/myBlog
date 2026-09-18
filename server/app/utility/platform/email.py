@@ -233,7 +233,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
     # delete user
     elif scope == "delete_user":
         user_message = (
-            "You requested to permanently delete a user account. "
+            "You requested to permanently delete your account. "
             "Enter the verification code below to authorize this action:"
         )
         subject = "CargoMap User Deletion Verification"
@@ -283,8 +283,7 @@ async def send_verification_otp_email(email: EmailStr, otp: int, scope: str):
     :root{{--bg:#fff;--text:#111;--otp-bg:#f8f9fa;--border:#e0e0e0;}}
     @media (prefers-color-scheme:dark){{:root{{--bg:#111;--text:#eee;--otp-bg:#333;--border:#444;}}}}
   </style>
-  <h1 style="margin:0 0 20px;color:var(--text);">Cargo
-  Map</h1>
+  <h1 style="margin:0 0 20px;color:var(--text);">CargoMap</h1>
   <p style="margin:0 0 12px;">Hi {email},</p>
   <p style="margin:0 0 20px;">{user_message}</p>
   <div style="background:var(--otp-bg);padding:16px 24px;margin:24px auto;max-width:240px;border-radius:10px;border:1px solid var(--border);">

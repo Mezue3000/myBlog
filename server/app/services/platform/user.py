@@ -451,8 +451,6 @@ async def request_delete_user_otp(
 
 
 
-
-
 # confirm user account deletion
 async def delete_user_account(
     data: DeleteUserRequest,
@@ -463,8 +461,8 @@ async def delete_user_account(
     # validate ownership rules
     verify_users_ownership(current_user.user_id, current_user)
 
-    # verify deletion OTP
-    await verify_email_otp(email=current_user.email, otp=data.otp, scope="delete_user")
+    # verify deletion otp
+    await verify_email_otp(otp_code=data.otp, scope="delete_user")
 
     try:
         # soft-delete account

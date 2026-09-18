@@ -51,7 +51,7 @@ SEED_USERS = [
     {
         "email": "mezueworld@gmail.com",
         "username": "global_admin",
-        "password": "Angelcode123@",
+        "password": "Angelcode123$",
         "role_id": 2
     },
     

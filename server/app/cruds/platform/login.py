@@ -17,13 +17,13 @@ from app.schemas.platform.users import TwoFAVerify
 
 
 # initialize router
-router = APIRouter(prefix="/v1/auth", tags=["authenticate"])
+router = APIRouter(prefix="/v1/auth", tags=["Authenticate"])
 
 
 
 
 # create an endpoint to sign_in and grab token
-@router.post("/token", dependencies=[Depends(attach_identifier)], response_model=Union[Token, TwoFAChallenge])
+@router.post("/login", dependencies=[Depends(attach_identifier)], response_model=Union[Token, TwoFAChallenge])
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["login"], key_func=email_username_key_func)
@@ -46,7 +46,7 @@ async def login(
 
 
 # endpoint for 2FA verification
-@router.post("/2fa/verify")
+@router.post("/verify_2fa")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["login"], key_func=two_fa_key_func)

@@ -156,7 +156,7 @@ class PasswordResetConfirm(SQLModel):
 # schema for successful 2FA
 class TwoFAChallenge(SQLModel):
     detail: str
-    requires_2fa: bool = True
+    requires_2fa: bool = False
 
 
 
@@ -171,7 +171,7 @@ class TwoFAVerify(SQLModel):
 
 # schema to delete user account
 class DeleteUserRequest(SQLModel):
-    password: str
+    otp: str
     
     
     

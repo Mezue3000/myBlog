@@ -86,7 +86,6 @@ async def test_tenant_isolation(
         )
 
         db.add(project_b1)
-
         await db.flush()
 
     finally:
@@ -103,9 +102,7 @@ async def test_tenant_isolation(
 
     try:
         statement = select(ApiProject)
-
         result = await db.exec(statement)
-
         projects = result.all()
 
     finally:
@@ -120,7 +117,6 @@ async def test_tenant_isolation(
 
     assert project_a1.project_id in project_ids
     assert project_a2.project_id in project_ids
-
     assert project_b1.project_id not in project_ids
 
     assert all(
@@ -134,9 +130,7 @@ async def test_tenant_isolation(
 
     try:
         statement = select(ApiProject)
-
         result = await db.exec(statement)
-
         projects = result.all()
 
     finally:

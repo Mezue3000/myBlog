@@ -90,7 +90,6 @@ public_key = serialization.load_pem_public_key(PUBLIC_KEY)
 ALGORITHM = "ES256"
 
 
-
 # function to get current user
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/v1/auth/token",
@@ -98,8 +97,8 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 credential_exception = HTTPException(
-    status_code = status.HTTP_404_NOT_FOUND, 
-    detail = "User not found", 
+    status_code = status.HTTP_401_UNAUTHORIZED, 
+    detail = "Could not validate credentials", 
     headers = {"WWW-Authenticate": "Bearer"})
     
     
@@ -111,11 +110,10 @@ expired_token_error = HTTPException(
 
 async def get_current_user(
     request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        token = token or request.cookies.get("access_token")
+        token = request.cookies.get("access_token")
         
         if not token:
             raise credential_exception

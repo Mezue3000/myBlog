@@ -111,10 +111,7 @@ async def create_checkout_session(
 
         # validate stripe response
         if not session.id:
-            raise RuntimeError(
-                "Stripe Checkout response did not "
-                "contain a session ID."
-            )
+            raise RuntimeError("Stripe checkout response did not contain a session ID.")
 
         if not session.url:
             raise RuntimeError(
