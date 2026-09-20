@@ -17,13 +17,18 @@ from app.schemas.platform.users import TwoFAVerify
 
 
 # initialize router
-router = APIRouter(prefix="/v1/auth", tags=["Authenticate"])
+router = APIRouter(prefix="/auth", tags=["Authenticate"])
 
 
 
 
 # create an endpoint to sign_in and grab token
-@router.post("/login", dependencies=[Depends(attach_identifier)], response_model=Union[Token, TwoFAChallenge])
+@router.post(
+    "/login", 
+    dependencies=[Depends(attach_identifier)], 
+    summary="User Login",
+    response_model=Union[Token, TwoFAChallenge]
+)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["login"], key_func=email_username_key_func)
@@ -46,7 +51,7 @@ async def login(
 
 
 # endpoint for 2FA verification
-@router.post("/verify_2fa")
+@router.post("/verify_2fa", summary="Verify 2FA Code")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["login"], key_func=two_fa_key_func)
@@ -69,6 +74,6 @@ async def verify_2fa(
    
 
 # create refresh token endpoint
-@router.post("/refresh_token")
+@router.post("/refresh_token", summary="Refresh Token")
 async def refresh_token(request: Request, response: Response):
     return await refresh_session_token(request=request, response=response)

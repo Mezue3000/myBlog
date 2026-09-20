@@ -19,12 +19,12 @@ from app.schemas.platform.users import UserCreate
 
 
 # initialize router
-router = APIRouter(prefix="/v1/Tenant-admin",  tags=["tenant-admins"])
+router = APIRouter(prefix="/tenant-admins",  tags=["Tenant Admin"])
 
     
  
 # endpoint for member invitation
-@router.post("/tenants/{tenant_id}/invitations", dependencies=[Depends(require_admin)])
+@router.post("/invitations", summary="Invite Member", dependencies=[Depends(require_admin)])
 
 @limiter.limit(TENANT_LIMITS["admin_iv"], key_func=tenant_key_func)
 async def invite_members(
@@ -57,7 +57,7 @@ async def invite_members(
     
     
 # soft-delete member endpoint
-@router.delete("/members/{member_id}", dependencies=[Depends(require_admin)])
+@router.delete("/members/{member_id}", dependencies=[Depends(require_admin)], summary="Remove Member")
 
 @limiter.limit(TENANT_LIMITS["admin_delete"], key_func=tenant_key_func)
 async def remove_member(
@@ -79,9 +79,13 @@ async def remove_member(
 
 
     
-    
 # endpoint to deactivate member
-@router.patch("/{member_id}/deactivate", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
+@router.patch(
+    "/members/{member_id}/deactivate", 
+    dependencies=[Depends(require_admin)],
+    summary="Deactivate Member",
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def deactivate_member(
@@ -104,7 +108,12 @@ async def deactivate_member(
     
     
 # endpoint to activate member
-@router.patch("/{member_id}/activate",  dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
+@router.patch(
+    "/members/{member_id}/activate",  
+    dependencies=[Depends(require_admin)], 
+    summary="Activate Member",
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(TENANT_LIMITS["admin_patch"], key_func=tenant_key_func)
 async def activate_member(

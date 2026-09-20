@@ -16,12 +16,12 @@ from app.services.stripe.checkout import create_checkout_session
 
 
 # initialize router
-router = APIRouter(prefix="/v1/billings", tags=["tenant_billings"])  
+router = APIRouter(prefix="/billings", tags=["Billing & Checkout"])
 
 
 
 # endpoint to create checkout session
-@router.post("/checkout/{plan_id}", dependencies=[Depends(require_owner)])
+@router.post("/checkout/{plan_id}", dependencies=[Depends(require_owner)], summary="Create Checkout Session")
 
 @limiter.limit(TENANT_LIMITS["create_session"], key_func=tenant_key_func)
 async def create_checkout(

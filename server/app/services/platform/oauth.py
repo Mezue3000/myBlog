@@ -107,7 +107,7 @@ async def handle_social_login(
         extra={"provider": provider, "email": email}
     )
 
-    # Validate provider
+    # validate provider
     provider = provider.lower()
     
     if provider not in ALLOWED_PROVIDERS:
@@ -286,12 +286,11 @@ async def handle_social_login(
             )
 
         return {
-            "user_id": user.user_id,
-            "email": user.email,
+            "access_token": tokens["access_token"],
+            "csrf_token": tokens["csrf_token"],
             "tenant_id": tenant.tenant_id,
-            "tenant_name": tenant.name,
+            "name": tenant.name,
             "tenant_type": tenant.type,
-            "tokens": tokens,
             "is_new_user": is_new_user,
             "provider": provider
         }

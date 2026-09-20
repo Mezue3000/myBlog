@@ -24,13 +24,18 @@ logger = get_logger(__name__)
 
 # initialize router
 router = APIRouter(
-    prefix="/v1/global_admin", 
-    tags=["global_admins"], 
+    prefix="/platform_admin", 
+    tags=["Platform Admin"], 
     dependencies=[Depends(get_current_active_user)]
 )
 
 # admin endpoint to retrieve users
-@router.get("/users", dependencies=[Depends(require_moderator)], response_model=PaginatedUsers)
+@router.get(
+    "/users", 
+    dependencies=[Depends(require_moderator)], 
+    summary="Retrieve Users Paginated",
+    response_model=PaginatedUsers
+)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admins_read"])      
@@ -63,7 +68,12 @@ async def get_users_paginated(
     
     
 # admin update-user endpoint
-@router.patch("/users/{user_id}", dependencies=[Depends(require_moderator)], response_model=UserUpdateRead)
+@router.patch(
+    "/users/{user_id}", 
+    dependencies=[Depends(require_moderator)], 
+    summary="Admin Update User",
+    response_model=UserUpdateRead
+)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
@@ -91,6 +101,7 @@ async def admin_update_user(
 @router.patch(
     "/users/{user_id}/deactivate", 
     dependencies=[Depends(require_admin)],
+    summary="Superadmin Deactivate User",
     status_code=status.HTTP_200_OK
 )
 
@@ -114,7 +125,12 @@ async def admin_deactivate_user(
 
 
 # admin activate user endpoint
-@router.patch("/users/{user_id}/activate", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
+@router.patch(
+    "/users/{user_id}/activate", 
+    dependencies=[Depends(require_admin)], 
+    summary="Superadmin Activate User",
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_patch"], key_func=user_key_func)
@@ -136,7 +152,12 @@ async def admin_activate_user(
 
 
 # admin delete user endpoint
-@router.patch("/users/{user_id}/delete", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK)
+@router.patch(
+    "/users/{user_id}/delete", 
+    dependencies=[Depends(require_admin)], 
+    summary="Superadmin Delete User",
+    status_code=status.HTTP_200_OK
+)
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
 @limiter.limit(AUTH_LIMITS["admin_delete"], key_func=user_key_func)
@@ -159,7 +180,10 @@ async def admin_delete_user(
 
 # admin restore user endpoint
 @router.patch(
-    "/users/{user_id}/restore", dependencies=[Depends(require_admin)], status_code=status.HTTP_200_OK
+    "/users/{user_id}/restore", 
+    dependencies=[Depends(require_admin)],
+    summary="Superadmin Restore User" ,
+    status_code=status.HTTP_200_OK
 )
 
 @limiter.limit(AUTH_LIMITS["ip_admin_write"])      
@@ -179,11 +203,19 @@ async def admin_restore_user(
     )
    
    
-   
+
+
+# *************************************TENANT MANAGEMENT***************************************
+
    
    
 # admin endpoint to retrieve tenants
-@router.get("/tenants", dependencies=[Depends(require_moderator)], response_model=PaginatedTenants)
+@router.get(
+    "/tenants", 
+    dependencies=[Depends(require_moderator)], 
+    summary="Retrieve Tenants Paginated",
+    response_model=PaginatedTenants
+)
 
 
 @limiter.limit(AUTH_LIMITS["ip_admins_read"])      
@@ -222,6 +254,7 @@ async def get_tenants_paginated(
 @router.patch(
     "/tenants/{tenant_id}/deactivate", 
     dependencies=[Depends(require_admin)], 
+    summary="Deactivate Tenant",
     status_code=status.HTTP_200_OK
 )
 
@@ -249,6 +282,7 @@ async def deactivate_tenant(
 @router.patch(
     "/tenants/{tenant_id}/activate", 
     dependencies=[Depends(require_admin)], 
+    summary="Activate Tenant",
     status_code=status.HTTP_200_OK
 )
 

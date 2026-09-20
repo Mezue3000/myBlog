@@ -18,7 +18,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.cores.redis import redis_client
 from app.cores.middleware import(
     RequestIDMiddleware,
-    # CacheRequestBodyMiddleware, 
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
     TenantContextMiddleware,
@@ -89,7 +88,6 @@ app.add_middleware(CustomCORSMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SecurityMiddleware, config=security_config)
 app.add_middleware(RequestIDMiddleware)
-# app.add_middleware(CacheRequestBodyMiddleware)
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(
     SessionMiddleware, 
@@ -106,13 +104,13 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 # add routers
-app.include_router(login.router)
-app.include_router(social_login.router)
-app.include_router(users.router)
-app.include_router(global_admins.router) 
-app.include_router(tenant_router.router)
-app.include_router(admin_router.router)
-app.include_router(members_router.router)
-app.include_router(api.router)
-app.include_router(billing.router)
-app.include_router(webhook.router)
+app.include_router(login.router, prefix="/v1")
+app.include_router(social_login.router, prefix="/v1")
+app.include_router(users.router, prefix="/v1")
+app.include_router(global_admins.router, prefix="/v1") 
+app.include_router(tenant_router.router, prefix="/v1")
+app.include_router(admin_router.router, prefix="/v1")
+app.include_router(members_router.router, prefix="/v1")
+app.include_router(api.router, prefix="/v1")
+app.include_router(billing.router, prefix="/v1")
+app.include_router(webhook.router, prefix="/v1")

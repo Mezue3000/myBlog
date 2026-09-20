@@ -11,7 +11,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.services.api_project.api import create_headless_api_service, create_service_key, revoke_service_api_key, get_tenant_api_keys, get_tenant_usage_logs, request_revoke_api_key_otp
 from app.utility.api_project.api import get_project_by_tenant, get_current_project
-from app.utility.tenant.admin_router import require_admin
 from uuid import UUID
 from typing import Optional
 from app.utility.platform.user import get_current_active_user
@@ -21,13 +20,13 @@ from app.utility.platform.user import get_current_active_user
 
 
 # initialize router
-router = APIRouter(prefix="/v1/api",  tags=["headless_api"])
+router = APIRouter(prefix="/headless_api",  tags=["Headless Api"])
 
 
 
 # endpoint to create api-project
-@router.post("/projects")
-   
+@router.post("/projects", summary="Create API Project")
+
 @limiter.limit(API_LIMITS["create_project"], key_func=user_key_func)
 async def create_api_project(
     request: Request,
@@ -65,7 +64,7 @@ async def create_api_project(
         
         
 # endpoint to create api-key
-@router.post("/projects/{project_id}/keys")
+@router.post("/projects/{project_id}/keys", summary="Generate Project API Key")
 
 @limiter.limit(API_LIMITS["generate_key"], key_func=tenant_key_func)
 async def generate_project_api_key(
@@ -95,7 +94,7 @@ async def generate_project_api_key(
 
 
 # endpoint to list tenant api-keys
-@router.get("/keys", response_model=list[ApiKeyRead])
+@router.get("/keys", response_model=list[ApiKeyRead], summary="Retrieve Tenant API Keys")
 
 @limiter.limit(API_LIMITS["list_key"], key_func=tenant_key_func)
 async def list_tenant_api_keys(
@@ -116,7 +115,7 @@ async def list_tenant_api_keys(
 
 
 # endpoint to list tenant usuge log
-@router.get("/usage-logs", response_model=list[APIUsageLogRead])
+@router.get("/usage-logs", response_model=list[APIUsageLogRead], summary="Retrieve Tenant Usage Logs")
 
 @limiter.limit(API_LIMITS["usage_logs"], key_func=tenant_key_func)
 async def list_tenant_usage_logs(
@@ -146,6 +145,7 @@ async def list_tenant_usage_logs(
 @router.post(
     "/keys/{api_key_id}/revoke/request",
     status_code=status.HTTP_200_OK,
+    summary="Request API Key Revocation OTP",
     response_model=MessageResponse
 )
 
@@ -172,7 +172,7 @@ async def request_revoke_api_key_otp_endpoint(
 
 
 # confirm revoke api-key endpoint
-@router.patch("/keys/{api_key_id}/revoke", status_code=status.HTTP_200_OK)
+@router.patch("/keys/{api_key_id}/revoke", status_code=status.HTTP_200_OK, summary="Revoke Project API Key")
 
 @limiter.limit(API_LIMITS["revoke_key"], key_func=tenant_key_func)
 async def revoke_project_api_key(

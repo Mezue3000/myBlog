@@ -133,7 +133,7 @@ async def create_checkout_session(
             stripe_customer_id=customer_id,
             status=session.status or "open",
             payment_status=session.payment_status or "unpaid",
-            expires_at=(
+            expired_at=(
                 datetime.fromtimestamp(session.expires_at, tz=timezone.utc)
                 if session.expires_at
                 else None
@@ -151,7 +151,9 @@ async def create_checkout_session(
             tenant.tenant_id,
             plan.name
         )
-
+        
+        return session.url
+    
     except HTTPException:
         await db.rollback()
         raise

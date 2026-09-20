@@ -11,7 +11,7 @@ from app.utility.platform.auth import set_auth_cookies
 
 
 
-router = APIRouter(prefix="/v1/social_login", tags=["Social_login"])
+router = APIRouter(prefix="/social_login", tags=["Social Login"])
 
 
 
@@ -82,7 +82,7 @@ def normalize_github_user(profile: dict, emails: list):
 
 
 # sign-up with google endpoint
-@router.get("/google")
+@router.get("/google", summary="Google Login")
 async def google_login(request: Request):
     redirect_uri = f"{local_host}/b2c/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -90,7 +90,7 @@ async def google_login(request: Request):
 
 
 
-@router.get("/google/callback")
+@router.get("/google/callback", summary="Google Callback")
 async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
     try:
         token = await oauth.google.authorize_access_token(request)
@@ -137,7 +137,7 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 # sign-up with github endpoint
-@router.get("/github")
+@router.get("/github", summary="Github Login")
 async def github_login(request: Request):
     redirect_uri = f"{local_host}/v1/auth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
@@ -145,7 +145,7 @@ async def github_login(request: Request):
 
 
 
-@router.get("/github/callback")
+@router.get("/github/callback", summary="Github Callback")
 async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
     try:
         token = await oauth.github.authorize_access_token(request)
@@ -198,56 +198,56 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 
-# api versions/google(mobile/spa)
-@router.get("/google/callback/api")
-async def google_callback_api(request: Request, db: AsyncSession = Depends(get_db)):
-    try:
-        token = await oauth.google.authorize_access_token(request)
+# # api versions/google(mobile/spa)
+# @router.get("/google/callback/api", summary="Google Callback API")
+# async def google_callback_api(request: Request, db: AsyncSession = Depends(get_db)):
+#     try:
+#         token = await oauth.google.authorize_access_token(request)
 
-        email, name, provider_id = normalize_google_user(token)
+#         email, name, provider_id = normalize_google_user(token)
 
-        return await handle_social_login(
-            email=email,
-            name=name,
-            provider="google",
-            provider_id=provider_id,
-            db=db
-        )
+#         return await handle_social_login(
+#             email=email,
+#             name=name,
+#             provider="google",
+#             provider_id=provider_id,
+#             db=db
+#         )
 
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google authentication failed."
-        )
-
-
+#     except Exception:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Google authentication failed."
+#         )
 
 
 
-# api versions/github(mobile/spa)
-@router.get("/github/callback/api")
-async def github_callback_api(request: Request, db: AsyncSession = Depends(get_db)):
-    try:
-        token = await oauth.github.authorize_access_token(request)
 
-        profile_resp = await oauth.github.get("user", token=token)
-        profile = profile_resp.json()
 
-        emails_resp = await oauth.github.get("user/emails", token=token)
-        emails = emails_resp.json()
+# # api versions/github(mobile/spa)
+# @router.get("/github/callback/api", summary="Github Callback API")
+# async def github_callback_api(request: Request, db: AsyncSession = Depends(get_db)):
+#     try:
+#         token = await oauth.github.authorize_access_token(request)
 
-        email, name, provider_id = normalize_github_user(profile, emails)
+#         profile_resp = await oauth.github.get("user", token=token)
+#         profile = profile_resp.json()
 
-        return await handle_social_login(
-            email=email,
-            name=name,
-            provider="github",
-            provider_id=provider_id,
-            db=db
-        )
+#         emails_resp = await oauth.github.get("user/emails", token=token)
+#         emails = emails_resp.json()
 
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GitHub authentication failed."
-        )
+#         email, name, provider_id = normalize_github_user(profile, emails)
+
+#         return await handle_social_login(
+#             email=email,
+#             name=name,
+#             provider="github",
+#             provider_id=provider_id,
+#             db=db
+#         )
+
+#     except Exception:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="GitHub authentication failed."
+#         )

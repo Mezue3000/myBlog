@@ -18,13 +18,13 @@ from app.schemas.platform.users import MessageResponse
 
 
 # initialize router
-router = APIRouter(prefix="/v1/Tenant",  tags=["tenant-router"])
+router = APIRouter(prefix="/tenant",  tags=["Tenants"])
 
 
 
 
 # endpoint to create team workspace
-@router.post("/tenants")
+@router.post("", summary="Create Team Workspace")
 
 @limiter.limit(TENANT_LIMITS["team"], key_func=user_key_func)
 async def create_team_workspace(
@@ -50,7 +50,7 @@ async def create_team_workspace(
     
     
 # endpoint to list all user team space
-@router.get("/tenants", response_model=list[TenantRead])
+@router.get("", response_model=list[TenantRead], summary="List All User Tenants")
 
 @limiter.limit(TENANT_LIMITS["list_tenant"], key_func=user_key_func)
 async def list_all_user_tenants(
@@ -65,9 +65,9 @@ async def list_all_user_tenants(
     
     
     
-    
+
 # create switch-tenant endpoint
-@router.post("/tenants/{tenant_id}/switch")
+@router.post("/{tenant_id}/switch", summary="Switch Active Tenant")
 
 @limiter.limit(TENANT_LIMITS["switch_tenant"], key_func=user_key_func)
 async def switch_tenant(
@@ -88,7 +88,12 @@ async def switch_tenant(
 
 
 # endpoint to update tenant brand
-@router.patch("/tenant/branding", dependencies=[Depends(require_owner)], response_model=TenantBrandingRead)
+@router.patch(
+    "/branding", 
+    dependencies=[Depends(require_owner)], 
+    summary="Update Tenant Brand",
+    response_model=TenantBrandingRead
+)
 
 @limiter.limit(TENANT_LIMITS["update_tenant"], key_func=tenant_key_func)
 async def update_tenant_brand(
@@ -123,7 +128,11 @@ async def update_tenant_brand(
 
 
 # endpoint to request delete tenant OTP
-@router.post("/tenants/delete/request", dependencies=[Depends(require_owner)], response_model=MessageResponse)
+@router.post(
+    "/delete/request", 
+    dependencies=[Depends(require_owner)], 
+    summary="Request Tenant Deletion OTP",
+    response_model=MessageResponse)
 
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=tenant_key_func,)
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=user_key_func)
@@ -147,7 +156,12 @@ async def request_delete_tenant_otp_endpoint(
 
 
 # confirm tenant delete endpoint
-@router.patch("/tenants", dependencies=[Depends(require_owner)], response_model=MessageResponse)
+@router.patch(
+    "",
+    dependencies=[Depends(require_owner)],  
+    summary="Delete Tenant Workspace",
+    response_model=MessageResponse
+)
 
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=tenant_key_func)
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=user_key_func)

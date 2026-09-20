@@ -15,13 +15,13 @@ from app.schemas.platform.users import UserCreate
 
 
 # initialize router
-router = APIRouter(prefix="/v1/register-membership",  tags=["tenant-members"])
+router = APIRouter(prefix="/tenant-members",  tags=["Tenant Members"])
 
 
 
 
 # endpoint to accept iv
-@router.post("/invitations/accept")
+@router.post("/invitations/accept", summary="Accept Invitation")
 
 @limiter.limit(AUTH_LIMITS["ip"])
 @limiter.limit(AUTH_LIMITS["accept_iv"], key_func=user_key_func)
@@ -42,7 +42,7 @@ async def accept_invitation(
 
 
 # endpoint to register invited member
-@router.post("/auth/register/invited")
+@router.post("/register/invited", summary="Register Invited User")
 
 @limiter.limit(AUTH_LIMITS["ip"])
 @limiter.limit(AUTH_LIMITS["register"], key_func=user_key_func)

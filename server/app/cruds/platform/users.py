@@ -16,12 +16,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
 # initialize router
-router = APIRouter(prefix="/v1/users", tags=["users"])  
+router = APIRouter(prefix="/users", tags=["Users"])  
 
 
 
 # create endpoint to start user registration by verifying email
-@router.post("/start_registration", dependencies=[Depends(attach_email)])
+@router.post("/start_registration", dependencies=[Depends(attach_email)], summary="Start Registration")
 
 @limiter.limit(AUTH_LIMITS["ip"])      
 @limiter.limit(AUTH_LIMITS["register"], key_func=email_key_func)
@@ -38,7 +38,7 @@ async def start_registration(
 
  
 # create endpoint to complete user registration
-@router.post("/complete_registration", response_model=UserRead)
+@router.post("/complete_registration", response_model=UserRead, summary="Complete Registration")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 async def complete_registration(
@@ -50,19 +50,11 @@ async def complete_registration(
 ):
     return await finalize_registration(user=user, otp_code=otp_code, db=db)
 
-
-
-
-# create endpoint to retrieve username
-@router.get("/get_username")
-async def get_username(current_user: User = Depends(get_current_user)):
-    return f"Hello {current_user.username}"  
-
   
   
   
 # create endpoint to retrieve user info...
-@router.get("/read_user", response_model=UserRead) 
+@router.get("/me", response_model=UserRead, summary="Read Current User") 
 async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return current_user 
   
@@ -70,7 +62,7 @@ async def read_user(current_user: User  = Depends(get_current_user), db: AsyncSe
   
   
 # create user update endpoint
-@router.patch("/update_user", response_model=UserUpdateRead)
+@router.patch("/me", response_model=UserUpdateRead, summary="Update Current User")
 
 @limiter.limit(AUTH_LIMITS["update_user"], key_func=user_key_func)
 async def update_user(
@@ -86,7 +78,7 @@ async def update_user(
 
 
 # create endpoint to change user password
-@router.patch("/update_password", status_code=status.HTTP_200_OK)
+@router.patch("/me/password", status_code=status.HTTP_200_OK, summary="Change Password")
 
 @limiter.limit(AUTH_LIMITS["forgot_password"], key_func=user_key_func)
 async def update_password(
@@ -102,7 +94,7 @@ async def update_password(
     
     
 # endpoint to initiate email update
-@router.patch("/request_email_update", status_code=status.HTTP_200_OK)
+@router.patch("/me/email/request", status_code=status.HTTP_200_OK, summary="Request Email Change")
 
 @limiter.limit(AUTH_LIMITS["update_email"], key_func=user_key_func)
 async def update_email(
@@ -124,7 +116,7 @@ async def update_email(
 
 
 # endpoint to complete email update
-@router.post("/complete_email_update", status_code=status.HTTP_200_OK)
+@router.post("/me/email/complete", status_code=status.HTTP_200_OK, summary="Complete Email Change")
 
 
 async def complete_email_update(
@@ -140,7 +132,7 @@ async def complete_email_update(
    
 
 # endpoint for reset password
-@router.post("/request_password-reset", dependencies=[Depends(attach_email)])
+@router.post("/password-reset/request", dependencies=[Depends(attach_email)], summary="Request Password Reset")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["reset_password"], key_func=email_key_func)
@@ -157,7 +149,7 @@ async def request_password_reset(
 
 
 # confirm reset password endpoint
-@router.post("/confirm_password-reset")
+@router.post("/password-reset/confirm", summary="Confirm Password Reset")
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 async def confirm_password_reset(
@@ -172,7 +164,7 @@ async def confirm_password_reset(
 
 
 # create all_device logout endpoint
-@router.post("/logout_all")
+@router.post("/logout-all", summary="Logout All Devices")
 async def logout_all_devices(request: Request, response: Response, background_tasks: BackgroundTasks):
     return await signout_all_devices(request=request, response=response, background_tasks=background_tasks)
    
@@ -180,7 +172,12 @@ async def logout_all_devices(request: Request, response: Response, background_ta
 
 
 # endpoint to request deletion OTP
-@router.patch("/request_delete_user", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+@router.patch(
+    "/delete/request", 
+    status_code=status.HTTP_200_OK, 
+    response_model=MessageResponse, 
+    summary="Request Account Deletion"
+)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 @limiter.limit(AUTH_LIMITS["delete_user"], key_func=user_key_func)
@@ -200,7 +197,12 @@ async def request_delete_user_otp_endpoint(
 
 
 # endpoint to delete user account(soft-delete)
-@router.patch("/confirm_delete_user", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+@router.patch(
+    "/delete/confirm",
+    status_code=status.HTTP_200_OK, 
+    summary="Confirm Account Deletion",
+    response_model=MessageResponse
+)
 
 @limiter.limit(AUTH_LIMITS["ip"])  
 async def delete_user_account_endpoint(

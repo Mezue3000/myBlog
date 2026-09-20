@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 
 # initialize router
-router = APIRouter(prefix="/v1/stripe", tags=["Stripe"])
+router = APIRouter(prefix="/stripe", tags=["Stripe Webhook"])
 
 
 
@@ -25,7 +25,7 @@ WEBHOOK_SECRET=os.getenv("STRIPE_WEBHOOK_SECRET")
 
 
 # webhook endpoint
-@router.post("/webhook", status_code=status.HTTP_200_OK)
+@router.post("/webhook", status_code=status.HTTP_200_OK,  summary="Process Stripe Webhook")
 async def stripe_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db)
