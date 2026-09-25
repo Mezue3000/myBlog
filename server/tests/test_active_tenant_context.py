@@ -6,10 +6,11 @@ from app.utility.tenant.tenant_router import current_tenant_id, get_current_tena
 
 
 
+# ensure get_current_tenant() sets active tenant id
 @pytest.mark.asyncio
 async def test_get_current_tenant_active_tenant_sets_context(db):
 
-    # Create plan
+    # create plan
     default_plan = Plan(
         plan_id=1,
         name="Personal Plan",
@@ -31,7 +32,7 @@ async def test_get_current_tenant_active_tenant_sets_context(db):
     db.add(role)
     await db.flush()
 
-    # Create personal tenant
+    # create personal tenant
     tenant = Tenant(
         name="Personal Tenant",
         type="personal",

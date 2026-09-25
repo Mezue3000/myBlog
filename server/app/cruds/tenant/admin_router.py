@@ -130,8 +130,3 @@ async def activate_member(
         current_user=current_user,
         db=db
     )
-
-
-
-
-#    _: TenantMembership = Depends(require_admin)

@@ -1,11 +1,60 @@
 # import dependencies
-from uuid import UUID
+from app.utility.tenant.tenant_router import get_current_tenant
+from app.utility.platform.user import get_current_active_user
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.tenant.tenant_router import get_active_tenant_membership
+from app.utility.platform.database import get_db
 from fastapi import HTTPException, status, Depends
-from app.models import TenantMembership, Tenant, TenantInvitation
+from uuid import UUID
+from app.utility.tenant.tenant_router import get_active_tenant_membership
+from app.models import User, Tenant, TenantMembership
 from app.utility.tenant.members_router import get_current_membership
 
+
+
+
+
+# tenant-type aware authorization
+def require_tenant_owner():
+
+    async def checker(
+        tenant: Tenant = Depends(get_current_tenant),
+        current_user: User = Depends(get_current_active_user),
+        db: AsyncSession = Depends(get_db)
+    ):
+        # personal and headless API tenants use tenant.owner_id
+        if tenant.type in {"personal", "headless_api"}:
+
+            if tenant.owner_id != current_user.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only the tenant owner can perform this action"
+                )
+
+            return tenant
+
+        # team tenants use tenant-membership.role
+        if tenant.type == "team":
+
+            membership = await get_current_membership(
+                current_user=current_user,
+                tenant=tenant,
+                db=db
+            )
+
+            if membership.role != "owner":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only the tenant owner can perform this action"
+                )
+
+            return tenant
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid tenant type"
+        )
+
+    return checker
 
 
 
@@ -15,7 +64,7 @@ from app.utility.tenant.members_router import get_current_membership
 ROLE_PRIORITY = {
     "owner": 3,
     "admin": 2,
-    "member": 1,
+    "member": 1
 }
 
 

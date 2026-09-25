@@ -114,10 +114,7 @@ async def create_checkout_session(
             raise RuntimeError("Stripe checkout response did not contain a session ID.")
 
         if not session.url:
-            raise RuntimeError(
-                "Stripe Checkout response did not "
-                "contain a Checkout URL."
-            )
+            raise RuntimeError("Stripe Checkout response did not contain a Checkout URL.")
 
         if session.customer != customer_id:
             raise RuntimeError(
@@ -278,7 +275,6 @@ async def handle_checkout_completed(
         )
 
         result = await db.exec(statement)
-
         checkout = result.first()
 
         if checkout is None:

@@ -11,7 +11,7 @@ from app.utility.platform.user import get_current_active_user
 from app.services.tenant.tenant_router import create_team_service, get_tenants_service, switch_tenant_service, update_service_branding
 from app.services.tenant.admin_router import get_current_tenant, delete_tenant_service, request_delete_tenant_otp
 from uuid import UUID
-from app.utility.tenant.admin_router import require_owner 
+from app.utility.tenant.admin_router import require_owner, require_admin
 from app.schemas.platform.users import MessageResponse
 
 
@@ -90,7 +90,7 @@ async def switch_tenant(
 # endpoint to update tenant brand
 @router.patch(
     "/branding", 
-    dependencies=[Depends(require_owner)], 
+    dependencies=[Depends(require_admin)], 
     summary="Update Tenant Brand",
     response_model=TenantBrandingRead
 )
@@ -132,9 +132,10 @@ async def update_tenant_brand(
     "/delete/request", 
     dependencies=[Depends(require_owner)], 
     summary="Request Tenant Deletion OTP",
-    response_model=MessageResponse)
+    response_model=MessageResponse
+)
 
-@limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=tenant_key_func,)
+@limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=tenant_key_func)
 @limiter.limit(TENANT_LIMITS["delete_tenant"], key_func=user_key_func)
 async def request_delete_tenant_otp_endpoint(
     request: Request,
@@ -158,7 +159,6 @@ async def request_delete_tenant_otp_endpoint(
 # confirm tenant delete endpoint
 @router.patch(
     "",
-    dependencies=[Depends(require_owner)],  
     summary="Delete Tenant Workspace",
     response_model=MessageResponse
 )
