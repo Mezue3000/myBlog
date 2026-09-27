@@ -319,7 +319,7 @@ class APIKey(SQLModel, table=True):
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=30))
     last_used_at: Optional[datetime] = Field(default=None)
 
-    # create Relationships
+    # create relationships
     project: ApiProject = Relationship(back_populates="api_keys")
     revoked_by_user: Optional["User"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[APIKey.revoked_by]"}

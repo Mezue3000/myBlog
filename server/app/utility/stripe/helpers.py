@@ -54,11 +54,7 @@ async def ensure_stripe_customer(
                 "owner_id": str(current_user.user_id),
                 "tenant_type": tenant.type
             },
-            options={
-                "idempotency_key": (
-                    f"tenant-customer-{tenant.tenant_id}"
-                ),
-            },
+            idempotency_key=f"tenant-customer-{tenant.tenant_id}"
         )
        
         tenant.stripe_customer_id = customer.id

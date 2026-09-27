@@ -18,13 +18,13 @@ from app.schemas.platform.users import MessageResponse
 
 
 # initialize router
-router = APIRouter(prefix="/tenant",  tags=["Tenants"])
+router = APIRouter(prefix="/tenants",  tags=["Tenants"])
 
 
 
 
 # endpoint to create team workspace
-@router.post("", summary="Create Team Workspace")
+@router.post("/organization", summary="Create Team Workspace")
 
 @limiter.limit(TENANT_LIMITS["team"], key_func=user_key_func)
 async def create_team_workspace(
@@ -128,7 +128,7 @@ async def update_tenant_brand(
 
 
 # endpoint to request delete tenant OTP
-@router.post(
+@router.patch(
     "/delete/request", 
     dependencies=[Depends(require_owner)], 
     summary="Request Tenant Deletion OTP",
@@ -158,7 +158,7 @@ async def request_delete_tenant_otp_endpoint(
 
 # confirm tenant delete endpoint
 @router.patch(
-    "",
+    "/delete/confirm",
     summary="Delete Tenant Workspace",
     response_model=MessageResponse
 )

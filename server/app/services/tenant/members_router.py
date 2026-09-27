@@ -2,11 +2,9 @@
 from app.cores.logging import get_logger 
 from pydantic import EmailStr
 from fastapi import Depends, HTTPException, status, BackgroundTasks
-from app.utility.platform.user import get_current_active_user
 from sqlmodel.ext.asyncio.session import AsyncSession
-from app.utility.platform.database import get_db
 from app.models import Tenant, User, TenantInvitation, TenantMembership, AuditLog
-from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members, lock_tenant, get_current_tenant
+from app.utility.tenant.tenant_router import get_tenant_membership, get_invitation_by_token, lock_tenant
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from datetime import datetime, timezone
 import os
@@ -17,6 +15,7 @@ from typing import Optional
 from app.utility.tenant.members_router import ensure_team_has_capacity
 from app.utility.tenant.invite import accept_workspace_invitation
 from app.utility.stripe.helpers import get_plan_for_tenant_type
+
 
 
 
@@ -319,3 +318,4 @@ async def register_invited_member(
         "workspace_joined": workspace_joined,
         "message": message
     }
+

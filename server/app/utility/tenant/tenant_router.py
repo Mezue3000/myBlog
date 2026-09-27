@@ -18,7 +18,6 @@ from contextvars import ContextVar
 
 
 
-
 # function to get personal workspace
 async def get_personal_tenant(user_id: int, db: AsyncSession) -> Tenant:
     # personal workspace via ownership
@@ -79,7 +78,6 @@ async def get_user_tenants_by_type(
     )
 
     result = await db.exec(statement)
-
     return result.all()
 
 
@@ -99,7 +97,6 @@ async def get_tenant_membership(
     )
 
     result = await db.exec(statement)
-
     return result.first()
 
 
@@ -120,7 +117,6 @@ async def get_active_tenant_membership(
     )
 
     result = await db.exec(statement)
-
     return result.first()
 
 
@@ -254,7 +250,7 @@ def generate_invite_token():
 async def get_tenant_membership_by_email(
     tenant_id: UUID,
     email: EmailStr,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     statement = (
         select(TenantMembership)
@@ -310,7 +306,6 @@ async def get_invitation_by_token(
 # function to count tenant members
 async def count_active_non_owner_members(
     tenant_id: UUID,
-    owner_id: int,
     db: AsyncSession
 ) -> int:
 
@@ -320,7 +315,7 @@ async def count_active_non_owner_members(
             TenantMembership.tenant_id == tenant_id,
             TenantMembership.is_deleted.is_(False),
             TenantMembership.is_active.is_(True),
-            TenantMembership.user_id != owner_id
+            TenantMembership.role != "owner"
         )
     )
 
@@ -337,8 +332,8 @@ async def get_tenant_owner(
     db: AsyncSession
 ) -> User:
 
-    # Personal / headless_api tenants
-    # Tenant.owner_id -> User.user_id
+    # personal / headless_api tenants
+    # tenant.owner_id -> User.user_id
     if tenant.type in {"personal", "headless_api"}:
 
         if tenant.owner_id is None:
@@ -364,8 +359,8 @@ async def get_tenant_owner(
 
         return owner
     
-    # Team tenant
-    # Tenant.members -> TenantMembership.user -> User
+    # team tenant
+    # tenant.members -> TenantMembership.user -> User
     if tenant.type == "team":
 
         statement = (
@@ -404,7 +399,7 @@ async def get_tenant_owner(
 
 
 
-# event hanlers to auto add tenant_id/bypass
+# event handlers to auto add tenant_id/bypass
 @event.listens_for(Session, "do_orm_execute")
 def add_tenant_filter(execute_state):
 

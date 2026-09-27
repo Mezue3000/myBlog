@@ -46,7 +46,9 @@ async def create_checkout_session(
     The function does not commit.
     The caller owns the transaction.
     """
-
+    
+    tenant_id = tenant.tenant_id
+    
     try:
         
         # get active plan
@@ -145,7 +147,7 @@ async def create_checkout_session(
             "Stripe Checkout session '%s' created "
             "for tenant '%s' using plan '%s'.",
             session.id,
-            tenant.tenant_id,
+            tenant_id,
             plan.name
         )
         
@@ -162,7 +164,7 @@ async def create_checkout_session(
         logger.exception(
             "Stripe Checkout creation failed "
             "for tenant '%s'.",
-            tenant.tenant_id
+            tenant_id
         )
 
         raise HTTPException(
@@ -176,7 +178,7 @@ async def create_checkout_session(
         logger.exception(
             "Unexpected error creating Stripe Checkout "
             "for tenant '%s'.",
-            tenant.tenant_id
+            tenant_id
         )
 
         raise HTTPException(

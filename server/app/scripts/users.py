@@ -49,7 +49,7 @@ async def hash_password(password: str) -> str:
 # seed users
 SEED_USERS = [
     {
-        "email": "mezueworld@gmail.com",
+        "email": "mezueebukachibueze@gmail.com",
         "username": "global_admin",
         "password": "Angelcode123$",
         "role_id": 2

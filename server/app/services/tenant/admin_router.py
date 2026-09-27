@@ -222,12 +222,14 @@ async def delete_member_service(
     current_user: User,
     db: AsyncSession
 ):
+    tenant_id = tenant.tenant_id
+    
     try:
         logger.info(
             f"User {current_user.user_id} "
             f"attempting to delete member "
             f"{member_id} from tenant "
-            f"{tenant.tenant_id}"
+            f"{tenant_id}"
         )
 
         # prevent admin from removing themselves
@@ -271,7 +273,7 @@ async def delete_member_service(
         logger.info(
             f"Member {member_id} deleted "
             f"from tenant "
-            f"{tenant.tenant_id} by "
+            f"{tenant_id} by "
             f"{current_user.user_id}"
         )
 
@@ -320,12 +322,20 @@ async def request_delete_tenant_otp(
     # ensure all members are removed
     remaining_members = await count_active_non_owner_members(
         tenant_id=tenant.tenant_id,
-        owner_id=tenant.owner_id,
         db=db
     )
-
+    
+    logger.info(
+        "Workspace member count before deletion",
+        extra={
+            "tenant_id": str(tenant.tenant_id),
+            "owner_id": tenant.owner_id,
+            "active_non_owner_members": remaining_members,
+        }
+    )
+    
     if remaining_members > 0:
-        raise ValueError("delete all members before deleting the workspace.")
+        raise ValueError("Remove all workspace members before deleting the workspace.")
 
     # generate OTP
     otp = await create_email_otp(
@@ -352,21 +362,19 @@ async def delete_tenant_service(
     *,
     tenant: Tenant,
     current_user: User,
-    otp: int,
+    otp: str,
     db: AsyncSession
 ):
+    tenant_id = tenant.tenant_id
+    
     # verify deletion OTP
-    await verify_email_otp(
-        email=current_user.email,
-        otp=otp,
-        scope="delete_tenant"
-    )
+    await verify_email_otp(otp_code=otp, scope="delete_tenant")
 
     try:
         logger.info(
             f"User {current_user.user_id} "
             f"confirmed deletion of tenant "
-            f"{tenant.tenant_id}"
+            f"{tenant_id}"
         )
 
         tenant.is_active = False
@@ -376,10 +384,10 @@ async def delete_tenant_service(
 
         audit_log = AuditLog(
             tenant_id=tenant.tenant_id,
-            actor_user_id=current_user.user_id,
+            actor_id=current_user.user_id,
             action="tenant.deleted",
             resource_type="tenant",
-            resource_id=str(tenant.tenant_id),
+            resource_id=str(tenant_id),
             metadata={
                 "tenant_name": tenant.name,
                 "deleted_by": current_user.user_id
@@ -389,9 +397,9 @@ async def delete_tenant_service(
         db.add(audit_log)
         await db.commit()
 
-        logger.info(f"Tenant {tenant.tenant_id} deleted successfully")
+        logger.info(f"Tenant {tenant_id} deleted successfully")
 
-        return {"message": "Workspace deleted successfully."}
+        return {"detail": "Workspace deleted successfully."}
 
     except HTTPException:
         raise
@@ -400,7 +408,7 @@ async def delete_tenant_service(
         await db.rollback()
         logger.error(
             f"Database error deleting tenant "
-            f"{tenant.tenant_id}: {e}"
+            f"{tenant_id}: {e}"
         )
         raise ValueError("Database error")
 
@@ -408,9 +416,11 @@ async def delete_tenant_service(
         await db.rollback()
         logger.exception(
             f"Failed to delete tenant "
-            f"{tenant.tenant_id}: {e}"
+            f"{tenant_id}: {e}"
         )
+        
         raise ValueError("Failed to delete tenant")
+
 
 
 

@@ -52,6 +52,7 @@ async def unhandled_exception_handler(
 
 
 
+
 # global value error handler
 async def value_error_handler(
     request: Request,
@@ -69,12 +70,12 @@ async def value_error_handler(
                 else None
             ),
         },
-        exc_info=exc,
+        exc_info=exc
     )
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
-            "detail": "Invalid value provided.",
+            "detail": str(exc)
         },
     )

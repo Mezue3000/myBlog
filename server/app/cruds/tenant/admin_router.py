@@ -30,20 +30,12 @@ router = APIRouter(prefix="/tenant-admins",  tags=["Tenant Admin"])
 async def invite_members(
     request: Request,
     response: Response,
-    tenant_id: UUID,
     data: InviteMembersRequest,
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # prevent tenant mismatch
-    if tenant_id != tenant.tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant mismatch detected"
-        )
-
     return await invite_members_service(
         tenant=tenant,
         emails=data.emails,

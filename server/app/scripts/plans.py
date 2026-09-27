@@ -10,8 +10,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 
-
-
 # load environment variable
 load_dotenv(dotenv_path="C:/Users/HP/Desktop/Python-Notes/myBlog/server/app/utility/platform/.env")
 
@@ -21,8 +19,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # create asynchronous engine  
 async_engine = create_async_engine(DATABASE_URL, echo=True)
-
-
 
 
 

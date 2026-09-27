@@ -189,17 +189,31 @@ async def update_service_branding(
         exclude_none=True
     )
 
-    for field, value in update_data.items():
-        setattr(tenant, field, value)
+    try:
+        for field, value in update_data.items():
+            setattr(tenant, field, value)
 
-    await db.flush()
+        await db.flush()
 
-    logger.info(
-        "Tenant branding updated. "
-        f"tenant_id={tenant.tenant_id}"
-    )
+        logger.info(
+            "Tenant branding updated",
+            extra={
+                "tenant_id": str(tenant.tenant_id),
+                "fields": list(update_data.keys()),
+            },
+        )
 
-    return tenant
+        return tenant
+
+    except Exception:
+        logger.exception(
+            "Failed to update tenant branding",
+            extra={
+                "tenant_id": str(tenant.tenant_id),
+                "fields": list(update_data.keys()),
+            },
+        )
+        raise
 
 
 

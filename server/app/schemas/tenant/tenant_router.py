@@ -38,7 +38,7 @@ class TenantBrandingUpdate(SQLModel):
         max_length=500
     )
 
-    primary_color: Optional[str] = Field(
+    primary_colour: Optional[str] = Field(
         default=None,
         max_length=20
     )
@@ -52,7 +52,7 @@ class TenantBrandingRead(SQLModel):
     tenant_id: UUID
     name: str
     logo_url: Optional[str]
-    primary_color: str
+    primary_colour: str
     
     model_config = ConfigDict(from_attributes=True)
     
