@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from fastapi import HTTPException, status, Depends
 from uuid import UUID
-from app.utility.tenant.tenant_router import get_active_tenant_membership
+from app.utility.tenant.tenant_router import get_tenant_membership, get_active_tenant_membership_by_user
 from app.models import User, Tenant, TenantMembership
 from app.utility.tenant.members_router import get_current_membership
 
@@ -69,22 +69,21 @@ ROLE_PRIORITY = {
 
 
 
-
 # function to validate privileges
 async def validate_tenant_role_hierarchy(
     actor_user_id: int,
-    target_user_id: int,
+    target_membership_id: int,
     tenant_id: UUID,
     db: AsyncSession
 ):
-    actor_membership = await get_active_tenant_membership(
+    actor_membership = await get_active_tenant_membership_by_user(
         user_id=actor_user_id,
         tenant_id=tenant_id,
         db=db
     )
 
-    target_membership = await get_active_tenant_membership(
-        user_id=target_user_id,
+    target_membership = await get_tenant_membership(
+        membership_id=target_membership_id,
         tenant_id=tenant_id,
         db=db
     )
@@ -96,7 +95,6 @@ async def validate_tenant_role_hierarchy(
         raise ValueError("Target membership not found")
 
     actor_level = ROLE_PRIORITY.get(actor_membership.role, 0)
-
     target_level = ROLE_PRIORITY.get(target_membership.role, 0)
 
     if actor_level <= target_level:
@@ -125,6 +123,6 @@ def require_tenant_role(*allowed_roles: str):
 
 
 
-require_owner = require_tenant_role("owner")
+require_owner_tenant = require_tenant_role("owner")
 
-require_admin = require_tenant_role("owner", "admin")
+require_admin_tenant = require_tenant_role("owner", "admin")

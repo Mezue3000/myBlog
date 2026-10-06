@@ -85,6 +85,7 @@ def get_max_team_members(
 
 # function to count the remaining members a tenant can have
 async def get_remaining_team_slots(
+    *,
     tenant: Tenant,
     db: AsyncSession,
     exclude_invitation_id: Optional[int] = None
@@ -97,50 +98,62 @@ async def get_remaining_team_slots(
         - active_members
         - active_pending_invitations
 
-    The invitation being accepted can be excluded from the pending invitation
-    count by passing exclude_invitation_id.
+    The invitation being accepted can be excluded from the pending
+    invitation count by passing exclude_invitation_id.
+
+    Args:
+        tenant: The team workspace.
+        db: Async database session.
+        exclude_invitation_id: The invitation currently being accepted.
+
+    Returns:
+        The number of remaining team member slots.
     """
-    
-    # get maximum allowed members from current plan
+
+    # maximum members allowed by the tenant's current plan
     max_members = get_max_team_members(tenant=tenant)
-        
-    # count both active/deactivated members
-    statement = (
-        select(func.count())
-        .select_from(TenantMembership)
+  
+    # count active workspace members
+    member_statement = (
+        select(func.count(TenantMembership.user_id))
         .where(
             TenantMembership.tenant_id == tenant.tenant_id,
             TenantMembership.is_deleted.is_(False),
-            TenantMembership.is_active.is_(True),
-            TenantMembership.is_active.is_(False)
+            TenantMembership.is_active.is_(True)
         )
     )
 
-    result = await db.exec(statement)
+    result = await db.exec(member_statement)
     active_members = result.one()
 
-    # Count active pending invitations
-    conditions = [
+    # count active, pending invitations
+    
+    now = datetime.now(timezone.utc)
+
+    invitation_conditions = [
         TenantInvitation.tenant_id == tenant.tenant_id,
+        TenantInvitation.is_accepted.is_(False),
         TenantInvitation.accepted_at.is_(None),
-        TenantInvitation.expires_at > datetime.now(timezone.utc)
+        TenantInvitation.expires_at > now
     ]
 
     if exclude_invitation_id is not None:
-        conditions.append(
-            TenantInvitation.invitation_id != exclude_invitation_id
-        )
+        invitation_conditions.append(TenantInvitation.invite_id != exclude_invitation_id)
 
-    statement = (
-        select(func.count())
-        .select_from(TenantInvitation)
-        .where(*conditions)
+    invitation_statement = (
+        select(func.count(TenantInvitation.invite_id))
+        .where(*invitation_conditions)
     )
 
-    result = await db.exec(statement)
+    result = await db.exec(invitation_statement)
     pending_invitations = result.one()
 
-    remaining_slots = max_members - active_members - pending_invitations
+    # calculate remaining capacity
+    remaining_slots = (
+        max_members
+        - active_members
+        - pending_invitations
+    )
 
     return max(remaining_slots, 0)
 
@@ -148,27 +161,28 @@ async def get_remaining_team_slots(
 
 
 
-# function to ensure workspace can accept more member
+# function to ensure workspace can accept more members
 async def ensure_team_has_capacity(
+    *,
     tenant: Tenant,
     db: AsyncSession,
     exclude_invitation_id: Optional[int] = None
 ) -> int:
     """
-    Ensures a team workspace has capacity for one more member.
+    Ensures that a team workspace has capacity for one more member.
 
     Args:
         tenant: The team workspace.
-        db: Database session.
-        exclude_invitation_id: Invitation to exclude from the pending
-            invitation count. Used when accepting an invitation.
+        db: Async database session.
+        exclude_invitation_id: Invitation ID to exclude from the pending
+            invitation count. Used when accepting an existing invitation.
 
     Returns:
-        The number of remaining slots.
+        The number of remaining member slots.
 
     Raises:
-        HTTPException(403): If the workspace is not a team workspace or
-            has reached its member limit.
+        HTTPException(403): If the workspace is not a team workspace.
+        ValueError: If the workspace has reached its member limit.
     """
 
     if tenant.type != "team":

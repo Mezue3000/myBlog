@@ -84,7 +84,7 @@ def normalize_github_user(profile: dict, emails: list):
 # sign-up with google endpoint
 @router.get("/google", summary="Google Login")
 async def google_login(request: Request):
-    redirect_uri = f"{local_host}/b2c/auth/google/callback"
+    redirect_uri = f"{local_host}/v1/social_login/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -98,6 +98,7 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
         email, name, provider_id = normalize_google_user(token)
 
         result = await handle_social_login(
+            request=request,
             email=email,
             name=name,
             provider="google",
@@ -111,26 +112,33 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
             content={
                 "message": "Authentication successful",
                 "is_new_user": result["is_new_user"],
-                "tenant_id": result["tenant_id"]
+                "tenant_id": str(result["tenant_id"]),
+                "tenant_type": result["tenant_type"]
             }
         )
         
         set_auth_cookies(
             response=response,
-            access_token=result["tokens"]["access_token"],
-            refresh_token=result["tokens"]["refresh_token"]
+            access_token=result["access_token"],
+            refresh_token=result["refresh_token"]
         )
 
         return response
 
     except HTTPException:
         raise
-
-    except Exception:
+    
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google authentication failed."
+            detail=f"Google authentication failed: {str(e)}"
         )
+        
+    # except Exception:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Google authentication failed."
+    #     )
 
 
 
@@ -139,7 +147,7 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
 # sign-up with github endpoint
 @router.get("/github", summary="Github Login")
 async def github_login(request: Request):
-    redirect_uri = f"{local_host}/v1/auth/github/callback"
+    redirect_uri = f"{local_host}/v1/social_login/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
 
 
@@ -172,15 +180,16 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
             content={
                 "message": "Authentication successful",
                 "is_new_user": result["is_new_user"],
-                "tenant_id": result["tenant_id"]
+                "tenant_id": str(result["tenant_id"]),
+                "tenant_type": result["tenant_type"]
             }
         )
 
         
         set_auth_cookies(
             response=response,
-            access_token=result["tokens"]["access_token"],
-            refresh_token=result["tokens"]["refresh_token"]
+            access_token=result["access_token"],
+            refresh_token=result["refresh_token"]
         )
 
         return response

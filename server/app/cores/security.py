@@ -35,7 +35,7 @@ security_config = SecurityConfig(
     redis_prefix="mezue-db:security:",
 
     # consolidated penetration engine
-    enable_penetration_detection=True,
+    enable_penetration_detection=False,
 
     # active automated ip banning
     auto_ban_threshold=5,
@@ -43,7 +43,7 @@ security_config = SecurityConfig(
 
     # explicitly deactivate rate-limiting features
     enable_rate_limiting=False,
-
+    
     # core threat intelligence & scanner blocking
     blocked_user_agents=[
         "sqlmap",

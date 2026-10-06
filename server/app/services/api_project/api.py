@@ -297,11 +297,7 @@ async def revoke_service_api_key(
 ) -> APIKey:
 
     # verify OTP
-    await verify_email_otp(
-        email=current_user.email,
-        otp=otp,
-        scope="revoke_api_key"
-    )
+    await verify_email_otp(otp_code=otp, scope="revoke_api_key")
 
     statement = (
         select(APIKey)

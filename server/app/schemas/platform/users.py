@@ -179,3 +179,11 @@ class DeleteUserRequest(SQLModel):
 # schema for service message output
 class MessageResponse(SQLModel):
     detail: str
+
+
+
+
+class InvitedRegistrationResponse(SQLModel):
+    user: UserRead
+    workspace_joined: bool
+    message: str | None = None

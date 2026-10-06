@@ -399,7 +399,7 @@ async def send_tenant_invitation_email(
       port=SMTP_PORT,
       username=SMTP_USERNAME,
       password=SMTP_PASSWORD,
-      start_tls=True,
+      use_tls=True,
       timeout=10
     )
 
@@ -547,42 +547,36 @@ async def send_bulk_invitation_emails(
 
 
 
+
 # function to accept workspace invitation
 async def accept_workspace_invitation(
     invitation: TenantInvitation,
     user: User,
     db: AsyncSession
 ) -> None:
-    """
-    Accepts a validated invitation.
+  
+  invitation_id = invitation.invite_id
+  tenant_id = invitation.tenant_id
+  user_id = user.user_id
 
-    Assumes:
-        - invitation exists
-        - invitation is not expired
-        - invitation belongs to the user
-        - user already exists
-    """
-    
-    now = datetime.now(timezone.utc)
-    
-    tenant = await lock_tenant(tenant_id=invitation.tenant_id, db=db)
+  now = datetime.now(timezone.utc)
 
-    if tenant.type == "team":
-        await ensure_team_has_capacity(
-            tenant=tenant,
-            db=db,
-            exclude_invitation_id=invitation.invitation_id
-        )
+  tenant = await lock_tenant(
+    tenant_id=tenant_id,
+    db=db
+  )
 
-    membership = TenantMembership(
-        tenant_id=tenant.tenant_id,
-        user_id=user.user_id
+  if tenant.type == "team":
+    await ensure_team_has_capacity(
+      tenant=tenant,
+      db=db,
+      exclude_invitation_id=invitation_id
     )
 
+    membership = TenantMembership(tenant_id=tenant_id, user_id=user_id)
     db.add(membership)
 
     invitation.is_accepted = True
     invitation.accepted_at = now
 
-    db.add(invitation)
     await db.flush()

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import AUTH_LIMITS
-from app.rate_limit.keys import user_key_func
+from app.rate_limit.keys import user_key_func, registration_key_func
 from app.schemas.tenant.admin_router import AcceptInvitationRequest
 from app.models import User
 from app.utility.platform.user import get_current_active_user 
@@ -42,10 +42,10 @@ async def accept_invitation(
 
 
 # endpoint to register invited member
-@router.post("/register/invited", summary="Register Invited User")
+@router.post("/register/invited", summary="Register&Accept Invited User")
 
 @limiter.limit(AUTH_LIMITS["ip"])
-@limiter.limit(AUTH_LIMITS["register"], key_func=user_key_func)
+@limiter.limit(AUTH_LIMITS["register"], key_func=registration_key_func)
 async def register_invited_user(
     request: Request,
     response: Response,

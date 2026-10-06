@@ -154,17 +154,13 @@ async def request_revoke_api_key_otp_endpoint(
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
-    api_key_id: UUID,
     current_user: User = Depends(get_current_active_user),
     current_tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_db)
 ):
     return await request_revoke_api_key_otp(
         background_tasks=background_tasks,
-        current_user=current_user,
-        tenant_id=current_tenant.tenant_id,
-        api_key_id=api_key_id,
-        db=db
+        current_user=current_user
     )
 
 

@@ -248,7 +248,8 @@ async def create_auth_audit_log_safe(
     create_auth_audit_log_bg,
     *,
     action: str,
-    user_id: str,
+    user_id: int,
+    tenant_id: UUID,
     metadata: dict,
     context: dict
 ):
@@ -256,12 +257,14 @@ async def create_auth_audit_log_safe(
         await create_auth_audit_log_bg(
             action=action,
             user_id=user_id,
+            tenant_id=tenant_id,
             metadata=metadata,
             context=context
         )
-        
+
     except Exception:
         logger.exception("Auth audit log failed")
+
 
 
 

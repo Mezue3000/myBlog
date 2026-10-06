@@ -79,6 +79,7 @@ class User(SQLModel, table=True):
         sa_column_kwargs={"server_default": func.now()},
         nullable=False
     )
+    
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True)
     
     # add foreign keys
@@ -177,12 +178,14 @@ class Tenant(SQLModel, table=True):
             "foreign_keys": "[Tenant.owner_id]"
         }
     )
+    
     deleted_by_user: Optional["User"] = Relationship(
         back_populates="deleted_tenants",
         sa_relationship_kwargs={
             "foreign_keys": "[Tenant.deleted_by]"
         }
     )
+    
     members: list["TenantMembership"] = Relationship(back_populates="tenant") 
     tenant_invitations: list["TenantInvitation"] = Relationship(back_populates="tenant")
     projects: list["ApiProject"] = Relationship(back_populates="tenant")
@@ -193,10 +196,12 @@ class Tenant(SQLModel, table=True):
         back_populates="tenant",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+    
     checkout_sessions: list["StripeCheckoutSession"] = Relationship(
         back_populates="tenant",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+    
     audit_logs: list["AuditLog"] = Relationship(back_populates="tenant")
 
 
@@ -229,6 +234,7 @@ class TenantMembership(SQLModel, TenantScopedMixin, table=True):
         back_populates="tenant_memberships",
         sa_relationship_kwargs={"foreign_keys": "[TenantMembership.user_id]"}
     )
+    
     deleted_by_user: Optional["User"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[TenantMembership.deleted_by]"}
     )    
@@ -255,7 +261,7 @@ class TenantInvitation(SQLModel, TenantScopedMixin, table=True):
     role: str = Field(default="member", max_length=10)
     token: str = Field(max_length=255, nullable=False, unique=True, index=True)
     is_accepted: bool = Field(default=False)
-    accepted_at: datetime = Field(default=None)
+    accepted_at: datetime = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=48))
 

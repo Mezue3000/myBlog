@@ -8,7 +8,7 @@ from app.schemas.tenant.admin_router import InviteMembersRequest, AcceptInvitati
 from app.models import Tenant, User, TenantMembership
 from app.utility.tenant.tenant_router import get_current_tenant
 from app.utility.platform.user import get_current_active_user
-from app.utility.tenant.admin_router import require_admin, require_owner 
+from app.utility.tenant.admin_router import require_admin_tenant, require_owner_tenant 
 from pydantic import EmailStr
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/tenant-admins",  tags=["Tenant Admin"])
     
  
 # endpoint for member invitation
-@router.post("/invitations", summary="Invite Member", dependencies=[Depends(require_admin)])
+@router.post("/invitations", summary="Invite Member", dependencies=[Depends(require_admin_tenant)])
 
 @limiter.limit(TENANT_LIMITS["admin_iv"], key_func=tenant_key_func)
 async def invite_members(
@@ -49,20 +49,24 @@ async def invite_members(
     
     
 # soft-delete member endpoint
-@router.delete("/members/{member_id}", dependencies=[Depends(require_admin)], summary="Remove Member")
+@router.delete(
+    "/members/{membership_id}", 
+    dependencies=[Depends(require_admin_tenant)], 
+    summary="Remove Member"
+)
 
 @limiter.limit(TENANT_LIMITS["admin_delete"], key_func=tenant_key_func)
 async def remove_member(
     request: Request,
     response: Response,
-    member_id: int,
+    membership_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await delete_member_service(
         tenant=tenant,
-        member_id=member_id,
+        membership_id=membership_id,
         current_user=current_user,
         db=db
     )
@@ -73,8 +77,8 @@ async def remove_member(
     
 # endpoint to deactivate member
 @router.patch(
-    "/members/{member_id}/deactivate", 
-    dependencies=[Depends(require_admin)],
+    "/members/{membership_id}/deactivate", 
+    dependencies=[Depends(require_admin_tenant)],
     summary="Deactivate Member",
     status_code=status.HTTP_200_OK
 )
@@ -83,14 +87,14 @@ async def remove_member(
 async def deactivate_member(
     request: Request,
     response: Response,
-    member_id: int,
+    membership_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await deactivate_member_service(
         tenant=tenant,
-        member_id=member_id,
+        membership_id=membership_id,
         current_user=current_user,
         db=db
     )
@@ -101,8 +105,8 @@ async def deactivate_member(
     
 # endpoint to activate member
 @router.patch(
-    "/members/{member_id}/activate",  
-    dependencies=[Depends(require_admin)], 
+    "/members/{membership_id}/activate",  
+    dependencies=[Depends(require_admin_tenant)], 
     summary="Activate Member",
     status_code=status.HTTP_200_OK
 )
@@ -111,14 +115,14 @@ async def deactivate_member(
 async def activate_member(
     request: Request,
     response: Response,
-    member_id: int,
+    membership_id: int,
     tenant: Tenant = Depends(get_current_tenant),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     return await activate_member_service(
         tenant=tenant,
-        member_id=member_id,
+        membership_id=membership_id,
         current_user=current_user,
         db=db
     )

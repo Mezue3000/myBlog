@@ -126,9 +126,7 @@ async def handle_social_login(
     role_id = os.getenv("USERS_ROLE_ID")
     
     if not role_id:
-        logger.error(
-            "USERS_ROLE_ID environment variable missing"
-        )
+        logger.error("USERS_ROLE_ID environment variable missing")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="User role configuration missing."
@@ -280,6 +278,7 @@ async def handle_social_login(
                     create_auth_audit_log_bg,
                     action="social_login",
                     user_id=user.user_id,
+                    tenant_id=tenant.tenant_id,
                     metadata={"provider": provider, "is_new_user": is_new_user},
                     context=audit_context
                 )
@@ -287,6 +286,7 @@ async def handle_social_login(
 
         return {
             "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
             "csrf_token": tokens["csrf_token"],
             "tenant_id": tenant.tenant_id,
             "name": tenant.name,

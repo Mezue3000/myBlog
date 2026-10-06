@@ -8,7 +8,7 @@ from app.utility.tenant.tenant_router import get_current_tenant
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from app.models import Tenant, User, TenantInvitation, TenantMembership, AuditLog
-from app.utility.tenant.tenant_router import get_tenant_membership, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members, lock_tenant
+from app.utility.tenant.tenant_router import get_active_tenant_membership_by_user, generate_invite_token, get_tenant_membership_by_email, has_active_invitation, get_invitation_by_token, count_active_non_owner_members, lock_tenant
 from app.utility.tenant.admin_router import validate_tenant_role_hierarchy
 from app.utility.tenant.invite import send_tenant_invitation_email, send_bulk_invitation_emails
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -45,7 +45,7 @@ async def invite_members_service(
     emails: list[EmailStr],
     current_user: User,
     background_tasks: BackgroundTasks,
-    db: AsyncSession,
+    db: AsyncSession
 ):
     try:
         # personal tenants cannot invite
@@ -53,12 +53,13 @@ async def invite_members_service(
             raise ValueError("Personal workspace cannot invite members. Please upgrade to a team plan.")
 
         # RBAC
-        membership = await get_tenant_membership(
+        membership = await get_active_tenant_membership_by_user(
             user_id=current_user.user_id,
             tenant_id=tenant.tenant_id,
             db=db
         )
-
+        
+        # service-layer guard
         if (
             membership is None
             or membership.role not in ["owner", "admin"]
@@ -218,85 +219,83 @@ async def invite_members_service(
 # function to soft-delete member
 async def delete_member_service(
     tenant: Tenant,
-    member_id: int,
+    membership_id: int,
     current_user: User,
     db: AsyncSession
 ):
     tenant_id = tenant.tenant_id
-    
-    try:
-        logger.info(
-            f"User {current_user.user_id} "
-            f"attempting to delete member "
-            f"{member_id} from tenant "
-            f"{tenant_id}"
-        )
 
-        # prevent admin from removing themselves
-        if member_id == current_user.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Use leave workspace endpoint instead"
-            )
-        
-        # validate role hierarchy
+    try:
+        # validate role hierarchy and get target membership
         target_membership = await validate_tenant_role_hierarchy(
             actor_user_id=current_user.user_id,
-            target_user_id=member_id,
-            tenant_id=tenant.tenant_id,
+            target_membership_id=membership_id,
+            tenant_id=tenant_id,
             db=db
         )
-        
-        if target_membership.is_deleted:
-            raise ValueError("Member is already deleted")
 
-        # soft delete membership
-        target_membership.is_deleted = True
-        target_membership.is_active = False
-        target_membership.deleted_at = datetime.now(timezone.utc)
-        target_membership.deleted_by = current_user.user_id
+        # prevent self-removal
+        if target_membership.user_id == current_user.user_id:
+            raise ValueError("You cannot remove yourself from the tenant")
+
+        # preserve values needed after deletion
+        target_user_id = target_membership.user_id
+        target_role = target_membership.role
+        target_membership_id = target_membership.membership_id
+
+        # hard delete membership
+        await db.delete(target_membership)
+        await db.flush()
 
         # create audit log
         audit_log = AuditLog(
-            tenant_id=tenant.tenant_id,
-            actor_user_id=current_user.user_id,
-            target_user_id=member_id,
+            tenant_id=tenant_id,
+            actor_id=current_user.user_id,
+            target_user_id=target_user_id,
             action="member.deleted",
             resource_type="tenant_membership",
-            resource_id=str(target_membership.membership_id),
-            metadata={"role": target_membership.role}
+            resource_id=str(target_membership_id),
+            metadata={"role": target_role}
         )
 
         db.add(audit_log)
         await db.commit()
 
         logger.info(
-            f"Member {member_id} deleted "
-            f"from tenant "
-            f"{tenant_id} by "
-            f"{current_user.user_id}"
+            f"Member {target_membership_id} deleted "
+            f"from tenant {tenant_id} "
+            f"by {current_user.user_id}"
         )
 
-        return {"message": ("Member deleted successfully")}
+        return {"message": "Member deleted successfully"}
 
     except HTTPException:
         raise
 
     except SQLAlchemyError as e:
         await db.rollback()
+
         logger.error(
             f"Database error deleting member "
-            f"{member_id}: {str(e)}"
+            f"{membership_id}: {str(e)}"
         )
-        raise ValueError("Database error")
 
-    except Exception as e:
+        raise 
+
+    except ValueError:
         await db.rollback()
+        raise
+
+    except Exception:
+        await db.rollback()
+
         logger.exception(
-            f"Unexpected error deleting "
-            f"member {member_id}: {str(e)}"
+            f"Unexpected error deleting member "
+            f"{membership_id}"
         )
-        raise ValueError("Failed to delete member")
+
+        raise
+        
         
         
         
@@ -425,159 +424,168 @@ async def delete_tenant_service(
 
 
 
-
 # function to softly-deactivate user
 async def deactivate_member_service(
     tenant: Tenant,
-    member_id: int,
+    membership_id: int,
     current_user: User,
     db: AsyncSession
 ):
+    tenant_id = tenant.tenant_id
+
     try:
         logger.info(
             f"User {current_user.user_id} "
             f"attempting to deactivate "
-            f"member {member_id}"
+            f"membership {membership_id} "
+            f"in tenant {tenant_id}"
         )
-        
-        if member_id == current_user.user_id:
+
+        # validate role hierarchy
+        target_membership = await validate_tenant_role_hierarchy(
+            actor_user_id=current_user.user_id,
+            target_membership_id=membership_id,
+            tenant_id=tenant_id,
+            db=db
+        )
+
+        # prevent self-deactivation
+        if target_membership.user_id == current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="You cannot deactivate yourself"
             )
-        
-        target_membership = await validate_tenant_role_hierarchy(
-            actor_user_id=current_user.user_id,
-            target_user_id=member_id,
-            tenant_id=tenant.tenant_id,
-            db=db
-        )
-        
+
+        # guard for service-level safety.
         if not target_membership.is_active:
             raise ValueError("Member is already inactive")
 
+        # preserve values needed for audit/logging
+        target_user_id = target_membership.user_id
+        target_membership_id = target_membership.membership_id
+
+        # deactivate membership
         target_membership.is_active = False
-        
-        db.add(target_membership)
         await db.flush()
 
+        # create audit log
         audit_log = AuditLog(
-            tenant_id=tenant.tenant_id,
-            actor_user_id=current_user.user_id,
-            target_user_id=member_id,
+            tenant_id=tenant_id,
+            actor_id=current_user.user_id,
+            target_user_id=target_user_id,
             action="member.deactivated",
-            resource_type="tenant_membership",
-            resource_id=str(target_membership.membership_id),
             changes={"is_active": {"old": True, "new": False}}
         )
 
         db.add(audit_log)
         await db.commit()
-
         logger.info(
-            f"Member {member_id} "
-            f"deactivated successfully"
+            f"Membership {target_membership_id} "
+            f"for user {target_user_id} "
+            f"deactivated successfully "
+            f"in tenant {tenant_id}"
         )
 
-        return {"message": ("Member deactivated successfully")}
+        return {"message": "Member deactivated successfully"}
 
     except HTTPException:
         raise
 
-    except SQLAlchemyError as e:
+    except ValueError:
         await db.rollback()
-        logger.error(
-            "tenant_member_deactivate_failed",
-            extra={
-                "tenant_id": tenant.tenant_id,
-                "actor_id": current_user.user_id,
-                "target_user_id": member_id
-            },
-            exc_info=True
-        )
-        raise ValueError("Database error")
-    except Exception as e:
+        raise
+
+    except SQLAlchemyError:
         await db.rollback()
-        logger.exception(f"Failed to deactivate member: {str(e)}")
-        raise ValueError("Failed to deactivate member")
-        
-        
-        
+        logger.exception(f"Database error deactivating membership {membership_id}")
+        raise
+
+    except Exception:
+        await db.rollback()
+        logger.exception(f"Unexpected error deactivating membership {membership_id}")
+        raise
+
+
+
+
 
 # function to softly-activate member
 async def activate_member_service(
     tenant: Tenant,
-    member_id: int,
+    membership_id: int,
     current_user: User,
     db: AsyncSession
 ):
+    tenant_id = tenant.tenant_id
+
     try:
         logger.info(
             f"User {current_user.user_id} "
             f"attempting to activate "
-            f"member {member_id}"
+            f"membership {membership_id} "
+            f"in tenant {tenant_id}"
         )
 
-        if member_id == current_user.user_id:
-            raise ValueError("You cannot activate yourself")
-        
+        # validate role hierarchy
         target_membership = await validate_tenant_role_hierarchy(
             actor_user_id=current_user.user_id,
-            target_user_id=member_id,
-            tenant_id=tenant.tenant_id,
+            target_membership_id=membership_id,
+            tenant_id=tenant_id,
             db=db
         )
-            
+
+        # prevent self-activation
+        if target_membership.user_id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot activate yourself"
+            )
+
+        # membership must currently be inactive
         if target_membership.is_active:
             raise ValueError("Member is already active")
 
+        # preserve values needed for audit/logging
+        target_user_id = target_membership.user_id
+        target_membership_id = target_membership.membership_id
+
+        # activate membership
         target_membership.is_active = True
-        
-        db.add(target_membership)
         await db.flush()
-        
+
+        # create audit log
         audit_log = AuditLog(
-            tenant_id=tenant.tenant_id,
-            actor_user_id=current_user.user_id,
-            target_user_id=member_id,
+            tenant_id=tenant_id,
+            actor_id=current_user.user_id,
+            target_user_id=target_user_id,
             action="member.activated",
-            resource_type="tenant_membership",
-            resource_id=str(target_membership.membership_id),
-            changes={
-                "is_active": {
-                    "old": False,
-                    "new": True
-                }
-            }
+            changes={"is_active": {"old": False, "new": True}}
         )
 
         db.add(audit_log)
         await db.commit()
-
         logger.info(
-            f"Member {member_id} "
-            f"activated successfully"
+            f"Membership {target_membership_id} "
+            f"for user {target_user_id} "
+            f"activated successfully "
+            f"in tenant {tenant_id}"
         )
 
-        return {"message": ("Member activated successfully")}
+        return {"message": "Member activated successfully"}
 
     except HTTPException:
         raise
 
-    except SQLAlchemyError as e:
+    except ValueError:
         await db.rollback()
-        logger.error(
-            "tenant_member_activate_failed",
-            extra={
-                "tenant_id": tenant.tenant_id,
-                "actor_id": current_user.user_id,
-                "target_user_id": member_id
-            },
-            exc_info=True
-        )
-        raise ValueError("Database error")
-    
-    except Exception as e:
+        raise
+
+    except SQLAlchemyError:
         await db.rollback()
-        logger.exception(f"Failed to activate member: {str(e)}")
-        raise ValueError("Failed to activate member")
+        logger.exception(f"Database error activating membership {membership_id}")
+        raise
+
+    except Exception:
+        await db.rollback()
+        logger.exception(f"Unexpected error activating membership {membership_id}")
+        raise

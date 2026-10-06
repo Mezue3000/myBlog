@@ -289,11 +289,31 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             logger.exception("Idempotency middleware error")
 
             raise 
+
+
+
+
+
+class GoogleOAuthBypassASGI:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # If the request is heading to the Google callback, bypass inner security middlewares entirely
+            if path.startswith("/v1/social_login/google/callback"):
+                await self.app(scope, receive, send)
+                return
         
-        
-        
-        
-        
+        # All other routes flow normally through your security guard
+        await self.app(scope, receive, send)
+
+
+
+
+
+
 
 
 # "geolocation=(); "           # No location

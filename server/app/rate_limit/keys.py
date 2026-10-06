@@ -69,3 +69,15 @@ def email_username_key_func(request: Request):
 def two_fa_key_func(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     return f"2fa:ip:{client_ip}"
+
+
+
+
+# unauthenticated registration rate-limit key
+def registration_key_func(request: Request) -> str:
+    client = request.client
+
+    if client is None:
+        return "registration:unknown"
+
+    return f"registration:ip:{client.host}"

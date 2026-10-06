@@ -21,7 +21,8 @@ from app.cores.middleware import(
     SecurityHeadersMiddleware, 
     CustomCORSMiddleware,
     TenantContextMiddleware,
-    IdempotencyMiddleware
+    IdempotencyMiddleware,
+    GoogleOAuthBypassASGI
 )
 
 from app.cores.exceptions import (
@@ -99,6 +100,7 @@ app.add_middleware(
 )
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GoogleOAuthBypassASGI)
 
 
 

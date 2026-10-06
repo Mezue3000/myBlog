@@ -4,11 +4,11 @@ from pydantic import EmailStr
 from fastapi import Depends, HTTPException, status, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Tenant, User, TenantInvitation, TenantMembership, AuditLog
-from app.utility.tenant.tenant_router import get_tenant_membership, get_invitation_by_token, lock_tenant
+from app.utility.tenant.tenant_router import get_active_tenant_membership_by_user, get_invitation_by_token, lock_tenant
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from datetime import datetime, timezone
 import os
-from app.schemas.platform.users import UserCreate, UserRead
+from app.schemas.platform.users import UserCreate, UserRead, InvitedRegistrationResponse
 from app.utility.platform.user import validate_unique_fields, slugify
 from app.utility.platform.security import hash_password
 from typing import Optional
@@ -26,83 +26,81 @@ logger = get_logger(__name__)
 
 
 
-# function to accept IV
+
+# accept invitation service function
 async def accept_invitation_service(
     token: str,
     current_user: User,
     db: AsyncSession
 ):
-    logger.info(
-        "Accept invitation started",
-        extra={
-            "user_id": current_user.user_id,
-            "email": current_user.email,
-            "token": token
-        },
-    )
+    user_id = current_user.user_id
+    user_email = current_user.email
 
     try:
+        logger.info(
+            "Accept invitation started",
+            extra={
+                "user_id": user_id,
+                "email": user_email
+            },
+        )
+
         invitation = await get_invitation_by_token(token=token, db=db)
 
         if invitation is None:
-            logger.warning("Invitation not found", extra={"token": token})
+            logger.warning(
+                "Invitation not found",
+                extra={"user_id": user_id},
+            )
             raise ValueError("Invitation not found.")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
 
-        # expired?
         if (
             invitation.expires_at is not None
             and invitation.expires_at < now
         ):
-            logger.warning("Invitation expired", extra={"token": token})
+            logger.warning(
+                "Invitation expired",
+                extra={
+                    "user_id": user_id,
+                    "invitation_id": invitation.invitation_id
+                },
+            )
             raise ValueError("Invitation has expired.")
 
-        # already accepted?
         if invitation.is_accepted:
             raise ValueError("Invitation already accepted.")
 
-        # email mismatch?
-        if (
-            invitation.email.lower()
-            != current_user.email.lower()
-        ):
+        if invitation.email.lower() != user_email.lower():
             raise ValueError("Invitation belongs to another user.")
 
-        # already a member?
-        existing_membership = await get_tenant_membership(
-            user_id=current_user.user_id,
-            tenant_id=invitation.tenant_id,
+        tenant_id = invitation.tenant_id
+
+        existing_membership = await get_active_tenant_membership_by_user(
+            user_id=user_id,
+            tenant_id=tenant_id,
             db=db
         )
 
         if existing_membership:
             raise ValueError("Already a member.")
 
-        # lock tenant
-        tenant = await lock_tenant(tenant_id=invitation.tenant_id, db=db)
+        tenant = await lock_tenant(tenant_id=tenant_id, db=db)
 
-        # revalidate capacity
         if tenant.type == "team":
             await ensure_team_has_capacity(
                 tenant=tenant,
                 db=db,
-                exclude_invitation_id=invitation.invitation_id
+                exclude_invitation_id=invitation.invite_id
             )
 
-        # create membership
-        membership = TenantMembership(
-            tenant_id=tenant.tenant_id,
-            user_id=current_user.user_id
-        )
+        membership = TenantMembership(tenant_id=tenant.tenant_id, user_id=user_id)
 
         db.add(membership)
 
-        # mark invitation accepted
         invitation.is_accepted = True
         invitation.accepted_at = now
-
-        db.add(invitation)
 
         await db.flush()
         await db.commit()
@@ -111,7 +109,8 @@ async def accept_invitation_service(
             "Invitation accepted successfully",
             extra={
                 "tenant_id": str(tenant.tenant_id),
-                "user_id": current_user.user_id
+                "user_id": user_id,
+                "invitation_id": invitation.invite_id
             },
         )
 
@@ -124,31 +123,48 @@ async def accept_invitation_service(
         await db.rollback()
         raise
 
+    except ValueError:
+        await db.rollback()
+        raise
+
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception(
+            "Database error accepting invitation",
+            extra={"user_id": user_id}
+        )
+        raise
+
     except Exception:
         await db.rollback()
-        logger.exception("Unexpected error accepting invitation.")
-        raise ValueError("Failed to accept invitation.")
+        logger.exception(
+            "Unexpected error accepting invitation",
+            extra={"user_id": user_id}
+        )
+        raise
+    
+    
+    
+    
 
-
-        
-        
-        
 # function to register invited member
 async def register_invited_member(
     user: UserCreate,
     token: str,
     db: AsyncSession
-) -> UserRead:
+) -> InvitedRegistrationResponse:
     """
     Register a new user from a workspace invitation.
 
     Flow:
         1. Validate invitation.
-        2. Create user.
-        3. Create personal tenant.
-        4. Commit registration.
-        5. Accept workspace invitation.
-        6. Return created user.
+        2. Validate unique user fields.
+        3. Create user.
+        4. Create personal tenant.
+        5. Commit account creation.
+        6. Accept workspace invitation.
+        7. Commit workspace membership.
+        8. Return registration result.
     """
 
     # validate invitation
@@ -157,97 +173,158 @@ async def register_invited_member(
     if invitation is None:
         raise ValueError("Invitation not found.")
 
-    now = datetime.now(timezone.utc)
-
     if invitation.is_accepted:
         raise ValueError("Invitation has already been accepted.")
 
-    if (
-        invitation.expires_at is not None
-        and invitation.expires_at < now
-    ):
-        raise ValueError("Invitation has expired.")
+    now = datetime.now(timezone.utc)
 
-    email = invitation.email.lower()
+    # MySQL DATETIME may return a naive datetime.
+    expires_at = invitation.expires_at
+
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at < now:
+            raise ValueError("Invitation has expired.")
+
+    email = invitation.email.strip().lower()
+
+    # keep the invitation tenant available before transaction 1.
+    invitation_tenant_id = invitation.tenant_id
+    invite_id = invitation.invite_id
 
     # validate unique fields
     await validate_unique_fields(
         db=db,
         fields={
-            "username": user.username.lower(),
+            "username": user.username.strip().lower(),
             "email": email
-        }
+        },
     )
 
+    # prepare account data
+    username = user.username.strip().lower()
     hashed_password = await hash_password(user.password)
-
-    slug = slugify(user.username) + "-workspace"
-
-    role_id = int(os.getenv("USERS_ROLE_ID"))
+    slug = f"{slugify(username)}-workspace"
 
     try:
-        
-        # TRANSACTION 1
-        # create account + personal tenant
+        role_id = int(os.getenv("USERS_ROLE_ID", ""))
+
+    except (TypeError, ValueError):
+        logger.exception("USERS_ROLE_ID is not configured correctly.")
+        raise RuntimeError("User role configuration is invalid.")
+
+    # TRANSACTION 1
+    # create account + personal tenant
+    try:
         new_user = User(
-            username=user.username.lower(),
+            username=username,
             email=email,
             password_hash=hashed_password,
             role_id=role_id
         )
 
         db.add(new_user)
+
+        # needed to obtain new_user.user_id before creating
+        # the personal tenant.
         await db.flush()
-        
-        # retrieve personal free plan
+
+        # retrieve personal free plan.
         free_plan = await get_plan_for_tenant_type(
             tenant_type="personal",
             plan_name="free",
             db=db
         )
 
+        if free_plan is None:
+            raise ValueError("Personal free plan is not configured.")
+
         personal_tenant = Tenant(
             name=f"{new_user.username}'s Workspace",
             slug=slug,
             owner_id=new_user.user_id,
             plan_id=free_plan.plan_id,
-            credits_remaining=free_plan.credit_limit
+            credits_remaining=free_plan.credits
         )
 
         db.add(personal_tenant)
+
+        # commit transaction 1.
         await db.commit()
+
+        # refresh after commit because the session may expire
+        # ORM attributes after commit.
         await db.refresh(new_user)
+
         logger.info(
-            "Invited user created successfully.",
+            "Invited user account created successfully.",
             extra={
                 "user_id": new_user.user_id,
-                "email": new_user.email
-            }
+                "email": new_user.email,
+                "invitation_id": invite_id
+            },
         )
 
     except IntegrityError:
         await db.rollback()
-        logger.exception("Integrity error creating invited user.")
+
+        logger.exception(
+            "Integrity error creating invited user.",
+            extra={
+                "email": email,
+                "invitation_id": invite_id
+            },
+        )
+
         raise ValueError("Unable to create account.")
+
+    except ValueError:
+        await db.rollback()
+
+        logger.exception(
+            "Validation error creating invited user.",
+            extra={
+                "email": email,
+                "invitation_id": invite_id
+            },
+        )
+
+        raise
 
     except Exception:
         await db.rollback()
-        logger.exception("Failed creating invited user.")
-        raise ValueError("Registration failed.")
 
+        logger.exception(
+            "Unexpected error creating invited user.",
+            extra={
+                "email": email,
+                "invitation_id": invite_id
+            },
+        )
 
+        raise
 
 
     # TRANSACTION 2
-    # join workspace
-  
+    # join invited workspace
+    
     workspace_joined = False
-    message = None
-    
-    # initialize invitation
-    invitation: Optional[TenantInvitation] = None
-    
+    message: str | None = None
+
+    # keep the ORM object intact.
+    # capture scalar values before transaction boundaries so
+    # rollback/expiration cannot trigger implicit database I/O.
+    new_user_id = new_user.user_id
+    new_user_email = new_user.email
+
+    invite_id = invitation.invite_id
+    invitation_tenant_id = invitation.tenant_id
+
     try:
+        # re-fetch the invitation because transaction 1 committed.
+        # this gives us a fresh ORM instance.
         invitation = await get_invitation_by_token(token=token, db=db)
 
         if invitation is None:
@@ -260,62 +337,82 @@ async def register_invited_member(
         )
 
         await db.commit()
-
         workspace_joined = True
 
         logger.info(
             "Invited user joined workspace successfully.",
             extra={
-                "user_id": new_user.user_id,
-                "tenant_id": str(invitation.tenant_id),
-                "invitation_id": invitation.invitation_id
-            }
+                "user_id": new_user_id,
+                "tenant_id": str(invitation_tenant_id),
+                "invitation_id": invite_id,
+                "email": new_user_email
+        },
     )
 
     except HTTPException as exc:
         await db.rollback()
 
+        # A forbidden workspace join should not destroy
+        # the already-created account.
         if exc.status_code == status.HTTP_403_FORBIDDEN:
-            message = exc.detail
+            workspace_joined = False
+            message = str(exc.detail)
+
             logger.warning(
-                "Account created but workspace join failed.",
+                "Account created but workspace join was denied.",
                 extra={
-                    "user_id": new_user.user_id,
-                    "tenant_id": str(invitation.tenant_id),
-                    "invitation_id": invitation.invitation_id,
+                    "user_id": new_user_id,
+                    "tenant_id": str(invitation_tenant_id),
+                    "invitation_id": invite_id,
                     "reason": exc.detail
-                }
-        )
+                },
+            )
 
         else:
             logger.warning(
                 "Invitation acceptance failed after registration.",
                 extra={
-                    "user_id": new_user.user_id,
+                    "user_id": new_user_id,
+                    "tenant_id": str(invitation_tenant_id),
+                    "invitation_id": invite_id,
                     "status_code": exc.status_code,
                     "reason": exc.detail
-                }
+                },
+            )
+
+        raise
+
+    except ValueError:
+        await db.rollback()
+
+        logger.exception(
+            "Invitation validation failed after registration.",
+            extra={
+                "user_id": new_user_id,
+                "tenant_id": str(invitation_tenant_id),
+                "invitation_id": invite_id
+            },
         )
+
         raise
 
     except Exception:
         await db.rollback()
+
         logger.exception(
             "Unexpected error while joining invited workspace.",
             extra={
-                "user_id": new_user.user_id,
-                "tenant_id": (
-                    str(invitation.tenant_id)
-                    if invitation is not None
-                    else None
-                ),
+                "user_id": new_user_id,
+                "tenant_id": str(invitation_tenant_id),
+                "invitation_id": invite_id
             },
         )
+
         raise
 
-    return {
-        "user": UserRead.model_validate(new_user),
-        "workspace_joined": workspace_joined,
-        "message": message
-    }
-
+    # return registration result
+    return InvitedRegistrationResponse(
+        user=UserRead.model_validate(new_user),
+        workspace_joined=workspace_joined,
+        message=message
+    )

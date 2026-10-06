@@ -86,14 +86,13 @@ async def get_user_tenants_by_type(
 
 # function to get tenant-membership
 async def get_tenant_membership(
-    user_id: int,
+    membership_id: int,
     tenant_id: UUID,
     db: AsyncSession
 ):
     statement = select(TenantMembership).where(
-        TenantMembership.user_id == user_id,
-        TenantMembership.tenant_id == tenant_id,
-        TenantMembership.is_deleted.is_(False)
+        TenantMembership.membership_id == membership_id,
+        TenantMembership.tenant_id == tenant_id
     )
 
     result = await db.exec(statement)
@@ -105,6 +104,25 @@ async def get_tenant_membership(
 
 # function to get active members
 async def get_active_tenant_membership(
+    membership_id: int,
+    tenant_id: UUID,
+    db: AsyncSession
+):
+    statement = select(TenantMembership).where(
+        TenantMembership.membership_id == membership_id,
+        TenantMembership.tenant_id == tenant_id,
+        TenantMembership.is_active.is_(True)
+    )
+
+    result = await db.exec(statement)
+    return result.first()
+
+
+
+
+
+# function to get active tenant-members by user_id
+async def get_active_tenant_membership_by_user(
     user_id: int,
     tenant_id: UUID,
     db: AsyncSession
@@ -112,8 +130,7 @@ async def get_active_tenant_membership(
     statement = select(TenantMembership).where(
         TenantMembership.user_id == user_id,
         TenantMembership.tenant_id == tenant_id,
-        TenantMembership.is_active.is_(True),
-        TenantMembership.is_deleted.is_(False)
+        TenantMembership.is_active.is_(True)
     )
 
     result = await db.exec(statement)
@@ -152,7 +169,7 @@ async def validate_tenant_access(
 
     # team tenant
     if tenant.type == "team":
-        membership = await get_tenant_membership(
+        membership = await get_active_tenant_membership_by_user(
             user_id=current_user.user_id,
             tenant_id=tenant.tenant_id,
             db=db
@@ -497,6 +514,7 @@ async def lock_tenant(tenant_id: UUID, db: AsyncSession) -> Tenant:
             Tenant.is_deleted.is_(False),
             Tenant.is_active.is_(True)
         )
+        .options(selectinload(Tenant.plan))
         .with_for_update()
     )
 
