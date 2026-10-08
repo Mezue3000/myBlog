@@ -9,12 +9,14 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from datetime import datetime, timezone
 import os
 from app.schemas.platform.users import UserCreate, UserRead, InvitedRegistrationResponse
+from app.schemas.tenant.tenant_router import TenantMemberRead
 from app.utility.platform.user import validate_unique_fields, slugify
 from app.utility.platform.security import hash_password
 from typing import Optional
-from app.utility.tenant.members_router import ensure_team_has_capacity
+from app.utility.tenant.members_router import ensure_team_has_capacity, get_members_by_tenant_id
 from app.utility.tenant.invite import accept_workspace_invitation
 from app.utility.stripe.helpers import get_plan_for_tenant_type
+from uuid import UUID
 
 
 
@@ -416,3 +418,33 @@ async def register_invited_member(
         workspace_joined=workspace_joined,
         message=message
     )
+
+
+
+
+
+# service function to list tenant members
+async def get_tenant_members_service(
+    tenant_id: UUID, 
+    current_user: User, 
+    db: AsyncSession
+):
+    try:
+        # fetch results containing membership and user details
+        results = await get_members_by_tenant_id(tenant_id=tenant_id, db=db)
+
+        members = [
+            TenantMemberRead(
+                membership_id=membership.membership_id,
+                email=user.email,
+                name=user.username,
+                role=membership.role
+            )
+            for membership, user in results
+        ]
+
+        return members
+
+    except Exception as e:
+        logger.error(f"Error fetching members for tenant {tenant_id}: {str(e)}")
+        raise ValueError("Failed to fetch tenant members")

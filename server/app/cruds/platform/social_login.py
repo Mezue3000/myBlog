@@ -167,6 +167,7 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
         email, name, provider_id = normalize_github_user(profile, emails)
 
         result = await handle_social_login(
+            request=request,
             email=email,
             name=name,
             provider="github",
@@ -193,6 +194,13 @@ async def github_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
 
         return response
+    
+    except Exception as e:
+        print(f"GITHUB OAUTH ERROR: {e}")
+        raise HTTPException(
+            status_code=400, 
+            detail="GitHub authentication failed."
+        )
 
     except HTTPException:
         raise

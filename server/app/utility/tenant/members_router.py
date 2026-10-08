@@ -9,6 +9,7 @@ from app.models import User, Tenant, TenantMembership, TenantInvitation
 from typing import Optional
 from datetime import datetime, timezone
 from app.rate_limit.resolver import get_plan_feature
+from uuid import UUID
 
 
 
@@ -68,7 +69,7 @@ def get_max_team_members(
     if max_members is None:
         raise ValueError("Plan configuration error: " "max_team_members is missing.")
     
-    # Make sure the value stored in JSON is usable.
+    # make sure the value stored in JSON is usable.
     try:
         max_members = int(max_members)
     except (TypeError, ValueError):
@@ -204,3 +205,19 @@ async def ensure_team_has_capacity(
         )
 
     return remaining_slots
+
+
+
+
+
+# get tenant-members by tenant_id
+async def get_members_by_tenant_id(tenant_id: UUID, db: AsyncSession):
+    # select statement joining TenantMembership and User
+    statement = (
+        select(TenantMembership, User)
+        .join(User, TenantMembership.user_id == User.user_id)
+        .where(TenantMembership.tenant_id == tenant_id)
+    )
+    
+    result = await db.exec(statement)
+    return result.all()

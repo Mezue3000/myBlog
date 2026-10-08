@@ -35,7 +35,7 @@ security_config = SecurityConfig(
     redis_prefix="mezue-db:security:",
 
     # consolidated penetration engine
-    enable_penetration_detection=False,
+    enable_penetration_detection=True,
 
     # active automated ip banning
     auto_ban_threshold=5,
@@ -67,9 +67,11 @@ security_config = SecurityConfig(
     ],
     
     # global middleware bypass routes
-    excluded_paths=[
+    exclude_paths=[
         "/health",
         "/docs",
-        "/openapi.json"
+        "/openapi.json",
+        "/v1/social_login/google/callback",
+        "/v1/social_login/github/callback"
     ]
 )

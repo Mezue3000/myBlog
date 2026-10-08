@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from app.rate_limit.limiter import limiter
 from app.rate_limit.policy import TENANT_LIMITS
 from app.rate_limit.keys import tenant_key_func, user_key_func
-from app.schemas.tenant.tenant_router import TenantCreate, TenantRead, TenantBrandingRead, TenantBrandingUpdate, DeleteTenantRequest
+from app.schemas.tenant.tenant_router import TenantCreate, TenantRead, TenantBrandingRead, TenantBrandingUpdate, DeleteTenantRequest, TenantMemberRead
 from app.models import User, Tenant, TenantMembership
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
@@ -13,6 +13,9 @@ from app.services.tenant.admin_router import get_current_tenant, delete_tenant_s
 from uuid import UUID
 from app.utility.tenant.admin_router import require_owner_tenant, require_admin_tenant
 from app.schemas.platform.users import MessageResponse
+from app.services.tenant.members_router import get_tenant_members_service
+from typing import List
+
 
 
 
@@ -82,6 +85,42 @@ async def switch_tenant(
         current_user=current_user,
         db=db
     )
+
+
+
+
+
+# endpoint to list all members belonging to a specific tenant workspace.
+@router.get(
+    "/{tenant_id}/members",
+    response_model=List[TenantMemberRead],
+    summary="list All Tenant-Members",
+    status_code=status.HTTP_200_OK
+)
+
+async def list_tenant_members(
+    tenant_id: UUID,
+    db: AsyncSession = Depends(get_db),       
+    current_user: User = Depends(get_current_active_user)
+):
+    try:
+        members = await get_tenant_members_service(
+            tenant_id=tenant_id,
+            current_user=current_user,
+            db=db
+        )
+        return members
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
 

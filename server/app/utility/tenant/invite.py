@@ -346,8 +346,6 @@ def build_invitation_email_html(
 
 
 
-
-
 # function to send tenant invitation email
 async def send_tenant_invitation_email(
     email: EmailStr,

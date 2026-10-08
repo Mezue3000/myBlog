@@ -3,7 +3,7 @@ from sqlmodel import SQLModel, Field
 from uuid import UUID
 from pydantic import ConfigDict
 from typing import Optional
-
+from pydantic import EmailStr
 
 
 
@@ -63,3 +63,16 @@ class TenantBrandingRead(SQLModel):
 # delete tenant schema
 class DeleteTenantRequest(SQLModel):
     otp: int
+
+
+
+
+
+# schema to read tenant-members
+class TenantMemberRead(SQLModel):
+    membership_id: int
+    email: EmailStr
+    name: str
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
