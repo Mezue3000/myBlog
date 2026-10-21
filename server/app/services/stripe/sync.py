@@ -8,9 +8,9 @@ from app.utility.stripe.helpers import (
     get_locked_tenant,
     get_plan_by_price_id,
     update_tenant_subscription,
-    upsert_subscription
+    upsert_subscription,
 )
-
+from app.services.stripe.credit import allocate_paid_plan_credits
 
 
 
@@ -53,6 +53,16 @@ async def sync_subscription_from_stripe(
     await update_tenant_subscription(
         tenant=tenant,
         plan=plan,
+        subscription=subscription,
+        db=db
+    )
+    
+    # refresh tenant's plan
+    await db.refresh(tenant, attribute_names=["plan"])
+    
+    # allocate paid credits
+    await allocate_paid_plan_credits(
+        tenant=tenant,
         subscription=subscription,
         db=db
     )

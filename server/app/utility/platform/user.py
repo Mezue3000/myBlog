@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status, Request, Response, Backgroun
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.utility.platform.database import get_db
 from typing import Optional
+from uuid import UUID
 from sqlalchemy.orm import selectinload
 from jwt import PyJWKError, ExpiredSignatureError
 from sqlmodel import select, or_
@@ -208,6 +209,24 @@ async def validate_unique_fields(
             
             
             
+
+
+# get user active tenant_id
+async def get_user_active_tenant_id(
+    *,
+    user_id: int,
+    db: AsyncSession
+) -> Optional[UUID]:
+    statement = select(User.active_tenant_id).where(
+        User.user_id == user_id,
+        User.is_deleted.is_(False)
+    )
+
+    result = await db.exec(statement)
+    return result.first()
+
+
+
 
 
 # fetch user by email/username

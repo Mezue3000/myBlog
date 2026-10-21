@@ -266,8 +266,6 @@ async def handle_trusted_device_login(
     # generate tokens
     access_token = create_access_token(user.user_id)
     refresh_token = await create_refresh_token(user.user_id)
-
-    # generate csrf token
     csrf_token = secrets.token_urlsafe(32)
 
     # set authentication cookies

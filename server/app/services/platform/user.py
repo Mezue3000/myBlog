@@ -2,9 +2,10 @@
 from app.cores.logging import get_logger
 from dotenv import load_dotenv
 from app.schemas.platform.users import UserUpdate, UserPasswordUpdate, EmailUpdate, DeleteUserRequest, EmailRequest, UserCreate, UserRead, PasswordResetConfirm
-from app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user, slugify
+from app.utility.platform.user import validate_unique_fields, get_user_by_email, validate_user_credentials, verify_users_ownership, logout_all_devices_for_user, slugify, get_user_active_tenant_id
 from fastapi import Depends, HTTPException, status, Request, Response, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
+from app.utility.platform.database import get_db
 from sqlmodel import select
 import os
 from app.models import RolePermission, Role, Permission, User, Tenant, AuditLog
@@ -391,7 +392,8 @@ async def finalize_email_update(
 async def signout_all_devices(
     request: Request,
     response: Response,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
 ):
     # extract refresh token
     refresh_token = await extract_refresh_token(request)
@@ -401,6 +403,12 @@ async def signout_all_devices(
 
     # extract user_id
     user_id = payload.get("user_id")
+    
+    # resolve audit context before invalidating sessions.
+    tenant_id = await get_user_active_tenant_id(
+        user_id=user_id,
+        db=db
+    )
 
     # invalidate all sessions
     await logout_all_devices_for_user(user_id)
@@ -413,6 +421,7 @@ async def signout_all_devices(
         create_auth_audit_log_bg,        
         action="LOGOUT_ALL_DEVICES",
         user_id=user_id,
+        tenant_id=tenant_id,
         metadata={},
         context=context
     )

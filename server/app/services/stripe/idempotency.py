@@ -4,6 +4,7 @@ from app.models import WebhookEvent
 from sqlmodel.ext.asyncio.session import AsyncSession
 import stripe, json
 from sqlalchemy.exc import IntegrityError
+from app.utility.stripe.helpers import json_serializer
 
 
 
@@ -39,8 +40,8 @@ async def register_webhook_event(
     final protection against concurrent duplicate deliveries.
     """
 
-    event_id = event.get("id")
-    event_type = event.get("type")
+    event_id = event.id
+    event_type = event.type
 
     if not event_id:
         raise ValueError("Stripe event ID is missing.")
@@ -51,7 +52,10 @@ async def register_webhook_event(
     webhook = WebhookEvent(
         stripe_event_id=event_id,
         event_type=event_type,
-        payload=json.dumps(event),
+        payload=json.dumps(
+            event.to_dict() if hasattr(event, "to_dict") else dict(event),
+            default=json_serializer,
+        ),
         processed=False
     )
 

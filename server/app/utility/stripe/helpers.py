@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from uuid import UUID
 from app.utility.tenant.tenant_router import validate_tenant
 from sqlalchemy.exc import IntegrityError
-
+from decimal import Decimal
 
 
 
@@ -297,45 +297,84 @@ async def update_webhook_status(
 
 
 
-
-# function to convert raw stripe subscription object into a normalized Python structure.
+# convert a raw stripe subscription object into normalized application fields.
 def extract_subscription_data(
-    stripe_subscription: dict[str, Any]
+    stripe_subscription: Any
 ) -> dict[str, Any]:
-    
-    # normalize a stripe subscription object into application fields.
-    items = stripe_subscription.get("items", {}).get("data", [])
+
+    items = stripe_subscription.items.data
 
     if not items:
-        raise ValueError("Stripe subscription contains no subscription items.")
+        raise ValueError(
+            f"Stripe subscription '{stripe_subscription.id}' "
+            "contains no subscription items."
+        )
 
-    price = items[0].get("price")
+    subscription_item = items[0]
+    price = subscription_item.price
 
     if price is None:
-        raise ValueError("Stripe subscription item has no price.")
+        raise ValueError(
+            f"Stripe subscription '{stripe_subscription.id}' "
+            "has a subscription item with no price."
+        )
+
+    # prefer the billing-period timestamps on the subscription item.
+    period_start = getattr(
+        subscription_item, "current_period_start", None
+    )
+    
+    period_end = getattr(
+        subscription_item, "current_period_end", None
+    )
+
+    # fall back to the top-level fields for older Stripe API structures.
+    if period_start is None:
+        period_start = getattr(stripe_subscription, "current_period_start", None)
+
+    if period_end is None:
+        period_end = getattr(
+            stripe_subscription, "current_period_end", None
+        )
+
+    if period_start is None or period_end is None:
+        raise ValueError(
+            f"Stripe subscription '{stripe_subscription.id}' "
+            "is missing its billing-period timestamps."
+        )
+
+    canceled_at = getattr(stripe_subscription, "canceled_at", None)
+    
+    # extract the customer ID, supporting either a string or expanded object.
+    customer = getattr(stripe_subscription, "customer", None)
+
+    if isinstance(customer, str):
+        customer_id = customer
+    else:
+        customer_id = getattr(customer, "id", None)
+
+    if not customer_id:
+        raise ValueError(f"Stripe subscription '{stripe_subscription.id}' has no customer ID.")
 
     return {
-        "stripe_subscription_id": stripe_subscription["id"],
-        "stripe_customer_id": stripe_subscription["customer"],
-        "stripe_price_id": price["id"],
-        "status": stripe_subscription["status"],
+        "stripe_subscription_id": stripe_subscription.id,
+        "stripe_customer_id": customer_id,
+        "stripe_price_id": price.id,
+        "status": stripe_subscription.status,
         "current_period_start": datetime.fromtimestamp(
-            stripe_subscription["current_period_start"],
-            tz=timezone.utc
+            period_start,
+            tz=timezone.utc,
         ),
         
         "current_period_end": datetime.fromtimestamp(
-            stripe_subscription["current_period_end"],
-            tz=timezone.utc
+            period_end,
+            tz=timezone.utc,
         ),
         
-        "cancel_at_period_end": stripe_subscription["cancel_at_period_end"],
+        "cancel_at_period_end": stripe_subscription.cancel_at_period_end,
         "cancelled_at": (
-            datetime.fromtimestamp(
-                stripe_subscription["canceled_at"],
-                tz=timezone.utc
-            )
-            if stripe_subscription.get("canceled_at")
+            datetime.fromtimestamp(canceled_at, tz=timezone.utc)
+            if canceled_at
             else None
         ),
     }
@@ -442,11 +481,11 @@ async def upsert_subscription(
     )
 
     if subscription is None:
-
         subscription = Subscription(
             tenant_id=tenant.tenant_id,
             plan_id=plan.plan_id,
             stripe_subscription_id=subscription_data["stripe_subscription_id"],
+            stripe_customer_id=subscription_data["stripe_customer_id"],
             status=subscription_data["status"],
             current_period_start=subscription_data["current_period_start"],
             current_period_end=subscription_data["current_period_end"],
@@ -457,6 +496,7 @@ async def upsert_subscription(
     else:
         subscription.plan_id = plan.plan_id
         subscription.stripe_subscription_id = subscription_data["stripe_subscription_id"]
+        subscription.stripe_customer_id = subscription_data["stripe_customer_id"]
         subscription.status = subscription_data["status"]
         subscription.current_period_start = subscription_data["current_period_start"]
         subscription.current_period_end = subscription_data["current_period_end"]
@@ -466,7 +506,7 @@ async def upsert_subscription(
     db.add(subscription)
     await db.flush()
 
-    return 
+    return subscription
 
 
 
@@ -486,10 +526,8 @@ async def update_tenant_subscription(
     """
 
     tenant.plan_id = plan.plan_id
-    tenant.next_credits_reset_at = subscription.current_period_end
 
     db.add(tenant)
-
     await db.flush()
 
 
@@ -584,30 +622,47 @@ async def create_billing_audit(
 
 
 
-# function to retrive stripe subscription
-async def retrieve_stripe_subscription(*, subscription_id: str) -> dict:
-    """
-    Retrieve the complete Stripe Subscription.
-
-    Stripe's SDK call is synchronous, so execute it in a
-    worker thread rather than blocking the async event loop.
-    """
+# function to retrieve a stripe subscription.
+async def retrieve_stripe_subscription(
+    *,
+    subscription_id: str,
+) -> dict:
 
     if not subscription_id:
         raise ValueError("Stripe subscription ID is required.")
 
     try:
-        subscription = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
+        subscription = await asyncio.to_thread(
+            stripe.Subscription.retrieve,
+            subscription_id
+        )
 
     except stripe.error.StripeError:
-        logger.exception("Failed retrieving Stripe subscription '%s'.", subscription_id)
+        logger.exception(
+            "Failed retrieving Stripe subscription '%s'.",
+            subscription_id
+        )
         raise
 
     if not subscription:
         raise ValueError(f"Stripe subscription '{subscription_id}' was not returned.")
 
-    return subscription
+    customer = getattr(subscription, "customer", None)
 
+    logger.info(
+        "Retrieved Stripe subscription",
+        extra={
+            "subscription_id": getattr(subscription, "id", None),
+            "customer_type": type(customer).__name__,
+            "customer_value": (
+                getattr(customer, "id", customer)
+                if customer is not None
+                else None
+            ),
+        },
+    )
+
+    return subscription
 
 
 
@@ -716,7 +771,6 @@ async def get_plan_for_tenant_type(
     )
 
     result = await db.exec(statement)
-    
     plan = result.first()
 
     if plan is None:
@@ -806,3 +860,18 @@ async def handle_subscription_cancellation(
         raise ValueError(f"Unsupported tenant type: {tenant_type}")
 
     await db.flush()
+
+
+
+
+
+# JSON serializer for decimal
+def json_serializer(value):
+    if isinstance(value, Decimal):
+     
+        return str(value)
+
+    raise TypeError(
+        f"Object of type {type(value).__name__} "
+        "is not JSON serializable"
+    )

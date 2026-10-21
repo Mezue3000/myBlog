@@ -36,9 +36,19 @@ async def create_checkout(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    return await create_checkout_session(
-        tenant=current_tenant,
-        current_user=current_user,
-        plan_id=plan_id,
-        db=db
-    )
+    try:
+        checkout_url = await create_checkout_session(
+            tenant=current_tenant,
+            current_user=current_user,
+            plan_id=plan_id,
+            db=db
+        )
+        
+        await db.commit()
+        
+        return {"checkout_url": checkout_url}
+
+    except Exception:
+        await db.rollback()
+        
+        raise

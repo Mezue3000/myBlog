@@ -37,8 +37,8 @@ async def dispatch_webhook(
     Unsupported events are ignored
     """
 
-    event_id = event["id"]
-    event_type = event["type"]
+    event_id = event.id
+    event_type = event.type
 
     handler = EVENT_HANDLERS.get(event_type)
 

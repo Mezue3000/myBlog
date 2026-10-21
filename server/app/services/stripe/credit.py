@@ -186,28 +186,52 @@ async def allocate_paid_plan_credits(
 
     Does not commit.
     """
+    # refresh to prevent stale object
+    await db.refresh(tenant, attribute_names=["plan"])
 
     # validate tenant plan
     if tenant.plan is None:
+        logger.warning(
+            "Credit allocation skipped: Tenant '%s' has no plan loaded (tenant.plan is None).",
+            tenant.tenant_id
+        )
         return False
 
     # never allocate paid credits to Free plans
-    if tenant.plan.name == "free":
+    if tenant.plan.name.lower() == "free":
+        logger.info(
+            "Credit allocation skipped: Tenant '%s' is on the Free plan ('%s').",
+            tenant.tenant_id,
+            tenant.plan.name
+        )
         return False
 
     # validate subscription period
     if subscription.current_period_start is None:
+        logger.warning(
+            "Credit allocation skipped: Subscription '%s' is missing period start/end dates.",
+            subscription.stripe_subscription_id
+        )
         return False
 
     if subscription.current_period_end is None:
+        logger.warning(
+            "Credit allocation skipped: Subscription '%s' is missing period start/end dates.",
+            subscription.stripe_subscription_id
+        )
         return False
 
-    # prevent duplicate allocation
+    # check if we already processed this exact billing period end date
     if (
         tenant.next_credits_reset_at is not None
-        and tenant.next_credits_reset_at
-        >= subscription.current_period_start
+        and tenant.next_credits_reset_at == subscription.current_period_end
     ):
+        logger.warning(
+            "Credit allocation skipped: Duplicate allocation guard triggered for tenant '%s'. "
+            "Already allocated for period ending %s.",
+            tenant.tenant_id,
+            subscription.current_period_end
+        )
         return False
 
     # allocate credits
@@ -229,6 +253,14 @@ async def allocate_paid_plan_credits(
 
     db.add(tenant)
     await db.flush()
+    
+    logger.info(
+        "Successfully allocated %d credits to tenant '%s' for subscription '%s'. New balance: %d",
+        credits,
+        tenant.tenant_id,
+        subscription.stripe_subscription_id,
+        tenant.credits_remaining
+    )
 
     return True
 

@@ -5,7 +5,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.services.stripe.idempotency import DuplicateWebhookEvent, register_webhook_event
 from app.utility.stripe.helpers import get_webhook_event, update_webhook_status, retrieve_stripe_subscription, create_billing_audit, record_payment_failure, get_subscription_by_stripe_id
 from app.services.stripe.sync import sync_subscription_from_stripe
-from app.services.stripe.credit import allocate_paid_plan_credits
 
 
 
@@ -46,8 +45,8 @@ async def handle_invoice_paid(
     """
 
     # validate event
-    event_id = event.get("id")
-    event_type = event.get("type")
+    event_id = event.id
+    event_type = event.type
 
     if not event_id:
         raise ValueError("Stripe event ID is missing.")
@@ -85,21 +84,18 @@ async def handle_invoice_paid(
 
     # process invoice
     try:
-        invoice = (
-            event.get("data", {})
-            .get("object")
-        )
+        invoice = event.data.object
 
         if not invoice:
             raise ValueError("Stripe invoice payload is missing.")
 
         # validate invoice status
-        invoice_id = invoice.get("id")
+        invoice_id = invoice.id
 
         if not invoice_id:
             raise ValueError("Stripe invoice ID is missing.")
 
-        invoice_status = invoice.get("status")
+        invoice_status = invoice.status
 
         if invoice_status != "paid":
             raise ValueError(
@@ -109,22 +105,44 @@ async def handle_invoice_paid(
             )
 
         # resolve stripe customer
-        customer_id = invoice.get("customer")
+        customer_id = invoice.customer
 
         if not customer_id:
-            raise ValueError(f"Invoice '{invoice_id}' has no Stripe customer."
-            )
+            raise ValueError(f"Invoice '{invoice_id}' has no Stripe customer.")
 
-        # resolve Stripe subscription
-        subscription_id = invoice.get("subscription")
+        # support both older and newer Stripe Invoice structures.
+        subscription_id = getattr(invoice, "subscription", None)
 
         if not subscription_id:
+            parent = getattr(invoice, "parent", None)
+
+            if parent and getattr(parent, "type", None) == "subscription_details":
+                subscription_details = getattr(
+                    parent,
+                    "subscription_details",
+                    None
+                )
+
+                subscription_id = getattr(
+                    subscription_details,
+                    "subscription",
+                    None
+                )
+
+        # handle either a subscription ID string or an expanded object.
+        if hasattr(subscription_id, "id"):
+            subscription_id = subscription_id.id
+
+        if not subscription_id:
+            parent = getattr(invoice, "parent", None)
+            parent_type = getattr(parent, "type", None) if parent else None
+
             raise ValueError(
-                f"Invoice '{invoice_id}' is not associated "
-                "with a Stripe subscription."
+                f"Invoice '{invoice_id}' has no subscription ID. "
+                f"Invoice parent type: {parent_type!r}."
             )
 
-        # retrieve complete stripe Subscription
+        # retrieve complete stripe subscription
         stripe_subscription = await retrieve_stripe_subscription(subscription_id=subscription_id)
         
         # synchronize local subscription
@@ -138,13 +156,6 @@ async def handle_invoice_paid(
                 f"Stripe customer mismatch for invoice "
                 f"'{invoice_id}'."
             )
-
-        # allocate paid credits
-        await allocate_paid_plan_credits(
-            tenant=tenant,
-            subscription=subscription,
-            db=db
-        )
 
         # create billing audit
         await create_billing_audit(
@@ -228,8 +239,8 @@ async def handle_invoice_payment_failed(
     """
 
     # validate event
-    event_id = event.get("id")
-    event_type = event.get("type")
+    event_id = event.id
+    event_type = event.type
 
     if not event_id:
         raise ValueError("Stripe event ID is missing.")
@@ -266,26 +277,23 @@ async def handle_invoice_payment_failed(
 
     # process invoice
     try:
-        invoice = (
-            event.get("data", {})
-            .get("object")
-        )
+        invoice = event.data.object
 
         if not invoice:
             raise ValueError("Stripe invoice payload is missing.")
 
         # validate invoice
-        invoice_id = invoice.get("id")
+        invoice_id = invoice.id
 
         if not invoice_id:
             raise ValueError("Stripe invoice ID is missing.")
 
-        customer_id = invoice.get("customer")
+        customer_id = invoice.customer
 
         if not customer_id:
             raise ValueError(f"Invoice '{invoice_id}' has no Stripe customer.")
 
-        subscription_id = invoice.get("subscription")
+        subscription_id = invoice.subscription
 
         if not subscription_id:
             raise ValueError(f"Invoice '{invoice_id}' is not associated with a Stripe subscription.")

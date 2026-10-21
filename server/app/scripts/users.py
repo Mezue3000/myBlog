@@ -81,6 +81,20 @@ SEED_USERS = [
         "username": "demo_user3",
         "password": "UserPassword234!",
         "role_id": 4
+    },
+    
+    {
+        "email": "user4@example.com",
+        "username": "demo_user4",
+        "password": "UserPassword567!",
+        "role_id": 4
+    },
+    
+    {
+        "email": "user5@example.com",
+        "username": "demo_user5",
+        "password": "UserPassword967!",
+        "role_id": 4
     }
 ]
 

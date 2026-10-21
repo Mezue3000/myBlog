@@ -326,7 +326,7 @@ async def register_invited_member(
 
     try:
         # re-fetch the invitation because transaction 1 committed.
-        # this gives us a fresh ORM instance.
+        # this gives a fresh ORM instance.
         invitation = await get_invitation_by_token(token=token, db=db)
 
         if invitation is None:
@@ -423,7 +423,7 @@ async def register_invited_member(
 
 
 
-# service function to list tenant members
+# service function to list specific tenant members
 async def get_tenant_members_service(
     tenant_id: UUID, 
     current_user: User, 

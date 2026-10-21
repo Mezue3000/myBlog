@@ -53,7 +53,7 @@ async def create_team_workspace(
     
     
 # endpoint to list all user team space
-@router.get("", response_model=list[TenantRead], summary="List All User Tenants")
+@router.get("", response_model=list[TenantRead], summary="List User Tenants")
 
 @limiter.limit(TENANT_LIMITS["list_tenant"], key_func=user_key_func)
 async def list_all_user_tenants(
@@ -94,7 +94,7 @@ async def switch_tenant(
 @router.get(
     "/{tenant_id}/members",
     response_model=List[TenantMemberRead],
-    summary="list All Tenant-Members",
+    summary="List Tenant-Members",
     status_code=status.HTTP_200_OK
 )
 

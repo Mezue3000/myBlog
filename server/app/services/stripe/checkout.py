@@ -212,26 +212,23 @@ async def handle_checkout_completed(
     except DuplicateWebhookEvent:
         logger.info(
             "Duplicate Stripe event '%s'.",
-            event["id"]
+            event.id
         )
 
         return
 
     try:
 
-        session = event["data"]["object"]
+        session = event.data.object
 
         # validate payload
-        if session.get("mode") != "subscription":
+        if session.mode != "subscription":
             raise ValueError("Unexpected checkout mode.")
         
-        tenant_id = session.get("client_reference_id")
-
-        stripe_customer_id = session.get("customer")
-
-        stripe_session_id = session.get("id")
-
-        stripe_subscription_id = session.get("subscription")
+        tenant_id = session.client_reference_id
+        stripe_customer_id = session.customer
+        stripe_session_id = session.id
+        stripe_subscription_id = session.subscription
 
         if not all(
             [
@@ -252,7 +249,6 @@ async def handle_checkout_completed(
         )
 
         result = await db.exec(statement)
-
         tenant = result.first()
         
         validate_tenant(tenant=tenant)
@@ -292,13 +288,13 @@ async def handle_checkout_completed(
             BillingAudit(
                 tenant_id=tenant.tenant_id,
                 event_type="checkout.session.completed",
-                stripe_event_id=event["id"]
+                stripe_event_id=event.id
             )
         )
         
         # mark processed
         await update_webhook_status(
-            event_id=event["id"],
+            event_id=event.id,
             processed=True,
             db=db
         )
@@ -313,7 +309,7 @@ async def handle_checkout_completed(
     except Exception as exc:
         await db.rollback()
         await update_webhook_status(
-            event_id=event["id"],
+            event_id=event.id,
             processed=False,
             error=exc,
             db=db

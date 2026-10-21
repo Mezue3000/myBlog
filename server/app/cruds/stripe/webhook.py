@@ -80,5 +80,6 @@ async def stripe_webhook(
         )
 
     await dispatch_webhook(event=event, db=db)
+    await db.commit()
 
     return {"received": True}

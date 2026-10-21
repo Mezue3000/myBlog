@@ -165,8 +165,18 @@ async def confirm_password_reset(
 
 # create all_device logout endpoint
 @router.post("/logout-all", summary="Logout All Devices")
-async def logout_all_devices(request: Request, response: Response, background_tasks: BackgroundTasks):
-    return await signout_all_devices(request=request, response=response, background_tasks=background_tasks)
+async def logout_all_devices(
+    request: Request, 
+    response: Response, 
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    return await signout_all_devices(
+        request=request, 
+        response=response, 
+        background_tasks=background_tasks,
+        db=db
+    )
    
 
 

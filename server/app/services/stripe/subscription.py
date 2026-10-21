@@ -39,7 +39,7 @@ async def handle_subscription_updated(
     """
     
     # validate event id
-    event_id = event.get("id")
+    event_id = event.id
 
     if not event_id:
         raise ValueError("Stripe event ID is missing.")
@@ -76,10 +76,7 @@ async def handle_subscription_updated(
 
     # process webhook
     try:
-        stripe_subscription = (
-            event.get("data", {})
-            .get("object")
-        )
+        stripe_subscription = event.data.object
 
         if not stripe_subscription:
             raise ValueError("Stripe subscription payload is missing.")
@@ -168,7 +165,7 @@ async def handle_subscription_deleted(
     - Commit the failure state separately.
     """
 
-    event_id = event.get("id")
+    event_id = event.id
 
     if not event_id:
         raise ValueError("Stripe event ID missing.")
@@ -185,18 +182,18 @@ async def handle_subscription_deleted(
             return
 
         # validate event payload
-        event_data = event.get("data")
+        event_data = event.data
 
         if not isinstance(event_data, dict):
             raise ValueError("Invalid Stripe event data.")
 
-        stripe_subscription = event_data.get("object")
+        stripe_subscription = event_data.object
 
         if not isinstance(stripe_subscription, dict):
             raise ValueError("Invalid Stripe subscription payload.")
 
-        subscription_id = stripe_subscription.get("id")
-        customer_id = stripe_subscription.get("customer")
+        subscription_id = stripe_subscription.id
+        customer_id = stripe_subscription.customer
 
         if not subscription_id:
             raise ValueError("Stripe subscription ID missing.")
