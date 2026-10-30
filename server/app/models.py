@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy.orm import Mapped
 import sqlalchemy as sa, future_uuid
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Numeric, UniqueConstraint
 from decimal import Decimal
 
 
@@ -473,7 +473,7 @@ class StripeCheckoutSession(SQLModel, TenantScopedMixin, table=True):
     # ex., "open", "completed", "expired"
     status: str = Field(default="open", max_length=25)
     payment_status: str = Field(default=None, max_length=75)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     completed_at: Optional[datetime] = Field(default=None)
     expired_at: Optional[datetime] = Field(default=None)
     updated_at: datetime = Field(sa_column_kwargs={"onupdate":func.now()}, nullable=True) 
@@ -546,6 +546,154 @@ class AuditLog(SQLModel, table=True):
 
 
 
+# cargo request model
+class CargoRequest(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "cargo_requests"
+
+    request_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
+    
+    origin: str = Field(max_length=150, nullable=False, index=True)
+    dest: str = Field(max_length=150, nullable=False, index=True)
+    actual_weight: Decimal = Field(sa_type=Numeric(12, 3), nullable=False)
+    pieces: int = Field(default=1, gt=0, nullable=False)
+    length: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
+    width: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
+    height: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
+    commodity: str = Field(default="GEN", max_length=50, nullable=False)
+    flight_date: datetime = Field(nullable=False)
+    volumetric_weight: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 3))
+    chargeable_weight: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 3))
+    has_dims: bool = Field(default=False, nullable=False)
+    is_volumetric_estimated: bool = Field(default=False, nullable=False)
+    needs_dims_confirmation: bool = Field(default=False, nullable=False)
+    status: str = Field(default="INTAKE", max_length=50, index=True, nullable=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc), 
+        sa_column_kwargs={"onupdate":func.now()}, 
+        nullable=False
+    ) 
+    
+    # create relationships
+    options: list["FlightOption"] = Relationship(
+        back_populates="cargo_request",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "lazy": "selectin",
+        },
+    )
+
+    booking: Optional["CargoBooking"] = Relationship(
+        back_populates="cargo_request",
+        sa_relationship_kwargs={
+            "uselist": False,
+            "lazy": "selectin",
+        },
+    )
+
+
+
+
+
+# create flight-option model
+class FlightOption(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "flight_options"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "request_id",
+            "rank",
+            name="uq_flight_option_request_rank",
+        ),
+    )
+
+    option_id: Optional[int] = Field(default=None, primary_key=True)
+
+    request_id: UUID = Field(foreign_key="cargo_requests.request_id", nullable=False, index=True)
+
+    rank: int = Field(gt=0, nullable=False)
+    airline: str = Field(max_length=120, nullable=False)
+    flight_no: Optional[str] = Field(default=None, max_length=30)
+    departure: Optional[datetime] = Field(default=None, sa_type=datetime(timezone=True))
+    aircraft: Optional[str] = Field(default=None, max_length=100)
+    transit_hours: Optional[Decimal] = Field(default=None, sa_type=Numeric(8, 2))
+    base_price_usd: Optional[Decimal] = Field(default=None, sa_type=Numeric(14, 2))
+    est_price_usd: Optional[Decimal] = Field(default=None, sa_type=Numeric(14, 2))
+    source: str = Field(default="UNKNOWN", max_length=100, nullable=False)
+    status: str = Field(default="AVAILABLE", max_length=50, index=True, nullable=False)
+    expires_at: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc) + timedelta(minutes=30)
+    )
+    
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # create relationship
+    cargo_request: CargoRequest = Relationship(back_populates="options")
+
+
+
+
+
+# create cargo-booking model
+class CargoBooking(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "cargo_bookings"
+
+    booking_id: Optional[int] = Field(default=None, primary_key=True)
+    request_id: UUID = Field(
+        foreign_key="cargo_requests.request_id",
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    selected_option_id: int = Field(foreign_key="flight_options.option_id", nullable=False, index=True)
+    awb: Optional[str] = Field(default=None, max_length=50, unique=True)
+    status: str = Field(default="PENDING", max_length=50, index=True, nullable=False)
+    human_choice: bool = Field(default=True, nullable=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+    
+    # create relationships
+    cargo_request: CargoRequest = Relationship(
+        back_populates="booking",
+        sa_relationship_kwargs={"foreign_keys": "[CargoBooking.request_id]"}
+    )
+    selected_option: FlightOption = Relationship(
+        back_populates="bookings",
+        sa_relationship_kwargs={"foreign_keys": "[CargoBooking.selected_option_id]"}
+    )
+
+
+
+
+
+# create flight-cache model
+class FlightCache(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "flight_cache"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "cache_key",
+            name="uq_flight_cache_tenant_key",
+        ),
+    )
+
+    cache_id: Optional[int] = Field(default=None, primary_key=True)
+    
+    cache_key: str = Field(max_length=255, nullable=False)
+    route: str = Field(max_length=255, nullable=False, index=True)
+    data: Dict[str, Any] = Field(default_factory=dict, sa_type=JSON, nullable=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc) + timedelta(hours=6), 
+        index=True
+    )
+
+
+
+
+
+
 # fix forward reference
 RolePermission.model_rebuild()
 Role.model_rebuild()
@@ -564,3 +712,7 @@ BillingAudit.model_rebuild()
 StripeCheckoutSession.model_rebuild()
 CreditLog.model_rebuild()
 AuditLog.model_rebuild()
+CargoRequest.model_rebuild()
+FlightOption.model_rebuild()
+CargoBooking.model_rebuild()
+FlightCache.model_rebuild()
