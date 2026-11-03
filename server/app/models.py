@@ -1,11 +1,11 @@
 # import dependencies
 from sqlmodel import SQLModel, Field, Relationship, func, Index, JSON, Text
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from uuid import UUID
 from sqlalchemy.orm import Mapped
 import sqlalchemy as sa, future_uuid
-from sqlalchemy import ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import ForeignKey, UniqueConstraint, ForeignKeyConstraint, CheckConstraint
 from decimal import Decimal
 
 
@@ -552,21 +552,30 @@ class CargoRequest(SQLModel, TenantScopedMixin, table=True):
 
     request_id: UUID = Field(default_factory=future_uuid.uuid7, primary_key=True, index=True, nullable=False) 
     
-    origin: str = Field(max_length=150, nullable=False, index=True)
-    dest: str = Field(max_length=150, nullable=False, index=True)
-    actual_weight: Decimal = Field(sa_type=Numeric(12, 3), nullable=False)
+    origin: str = Field(max_length=150, nullable=False)
+    dest: str = Field(max_length=150, nullable=False)
+    actual_weight: Optional[Decimal] = Field(max_digits=12, decimal_places=2, ge=0, nullable=False)
     pieces: int = Field(default=1, gt=0, nullable=False)
-    length: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
-    width: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
-    height: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 2))
-    commodity: str = Field(default="GEN", max_length=50, nullable=False)
-    flight_date: datetime = Field(nullable=False)
-    volumetric_weight: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 3))
-    chargeable_weight: Optional[Decimal] = Field(default=None, sa_type=Numeric(12, 3))
+    length: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2)
+    width: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2)
+    height: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2)
+    commodity: Optional[str] = Field(default=None, max_length=50, nullable=False)
+    flight_date: Optional[date] = Field(default=None, index=True)
+    volumetric_weight: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=3)
+    chargeable_weight: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=3)
+    estimated_volume_m3: Optional[Decimal] = Field(default=None, ge=0)
+    estimated_density: Optional[Decimal] = Field(default=None, gt=0)
+    intake_status: str = Field(default="collecting", max_length=30, index=True)
     has_dims: bool = Field(default=False, nullable=False)
     is_volumetric_estimated: bool = Field(default=False, nullable=False)
     needs_dims_confirmation: bool = Field(default=False, nullable=False)
-    status: str = Field(default="INTAKE", max_length=50, index=True, nullable=False)
+    status: str = Field(default="INTAKE", max_length=50, nullable=False)
+    
+    # agent processing control
+    processing_token: Optional[str] = Field(default=None, max_length=100)
+    processing_started_at: Optional[datetime] = Field(default=None)
+    processing_lease_expires_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), 
@@ -590,6 +599,92 @@ class CargoRequest(SQLModel, TenantScopedMixin, table=True):
             "lazy": "selectin",
         },
     )
+    
+    __table_args__ = (
+        Index("ix_cargo_route_date", "origin", "dest", "flight_date"),
+        Index("ix_cargo_tenant_status", "tenant_id", "status"),
+    )
+
+
+
+
+
+# cargo message model
+class CargoMessage(SQLModel, TenantScopedMixin, table=True):
+    __tablename__ = "cargo_messages"
+
+    __table_args__ = (
+        # ensure every message belongs to a valid request within the same tenant.
+        ForeignKeyConstraint(
+            ["tenant_id", "request_id"],
+            [
+                "cargo_request.tenant_id",
+                "cargo_request.request_id"
+            ],
+            ondelete="CASCADE"
+        ),
+        
+        # prevent duplicate sequence numbers within same cargo request.
+        UniqueConstraint(
+            "tenant_id",
+            "request_id",
+            "sequence_number",
+            name="uq_cargo_message_sequence"
+        ),
+        
+        # prevent duplicate message submissions.
+        UniqueConstraint(
+            "tenant_id",
+            "request_id",
+            "idempotency_key",
+            name="uq_cargo_message_idempotency"
+        ),
+        
+        # only allow supported message roles.
+        CheckConstraint(
+            "role IN ('user', 'assistant')",
+            name="ck_cargo_message_role"
+        ),
+        
+        # optimize conversation history retrieval.
+        Index(
+            "ix_cargo_message_conversation",
+            "tenant_id",
+            "request_id",
+            "sequence_number"
+        ),
+    )
+
+    # Primary key
+    message_id:  Optional[int] = Field(default=None, primary_key=True)
+    
+    # associated cargo request
+    request_id: UUID = Field(foreign_key="cargo_requests.request_id", nullable=False, index=True)
+
+    # message role
+    role: str = Field(max_length=20)
+
+    # actual message content
+    content: str = Field(nullable=False, max_length=10000)
+
+    # message ordering
+    sequence_number: int = Field(nullable=False)
+
+    # prevent duplicate submissions
+    idempotency_key: Optional[str] = Field(default=None, max_length=100)
+
+    # additional message information
+    message_metadata: Optional[dict] = Field(
+        default=None,
+        sa_type=JSON,
+        sa_column_kwargs={
+            "name": "metadata",
+            "nullable": True
+        }
+    )
+
+    # creation timestamp
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 
@@ -599,16 +694,9 @@ class CargoRequest(SQLModel, TenantScopedMixin, table=True):
 class FlightOption(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "flight_options"
 
-    __table_args__ = (
-        UniqueConstraint(
-            "request_id",
-            "rank",
-            name="uq_flight_option_request_rank",
-        ),
-    )
-
     option_id: Optional[int] = Field(default=None, primary_key=True)
 
+    # add foreign-key
     request_id: UUID = Field(foreign_key="cargo_requests.request_id", nullable=False, index=True)
 
     rank: int = Field(gt=0, nullable=False)
@@ -616,9 +704,9 @@ class FlightOption(SQLModel, TenantScopedMixin, table=True):
     flight_no: Optional[str] = Field(default=None, max_length=30)
     departure: Optional[datetime] = Field(default=None, sa_type=datetime(timezone=True))
     aircraft: Optional[str] = Field(default=None, max_length=100)
-    transit_hours: Optional[Decimal] = Field(default=None, sa_type=Numeric(8, 2))
-    base_price_usd: Optional[Decimal] = Field(default=None, sa_type=Numeric(14, 2))
-    est_price_usd: Optional[Decimal] = Field(default=None, sa_type=Numeric(14, 2))
+    transit_hours: Optional[Decimal] = Field(default=None, max_digits=8, decimal_places=2)
+    base_price_usd: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)
+    est_price_usd: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)
     source: str = Field(default="UNKNOWN", max_length=100, nullable=False)
     status: str = Field(default="AVAILABLE", max_length=50, index=True, nullable=False)
     expires_at: Optional[datetime] = Field(
@@ -629,6 +717,10 @@ class FlightOption(SQLModel, TenantScopedMixin, table=True):
 
     # create relationship
     cargo_request: CargoRequest = Relationship(back_populates="options")
+    
+    __table_args__ = (
+        UniqueConstraint("request_id", "rank", name="uq_flight_option_request_rank"),
+    )
 
 
 
@@ -639,16 +731,13 @@ class CargoBooking(SQLModel, TenantScopedMixin, table=True):
     __tablename__ = "cargo_bookings"
 
     booking_id: Optional[int] = Field(default=None, primary_key=True)
-    request_id: UUID = Field(
-        foreign_key="cargo_requests.request_id",
-        nullable=False,
-        unique=True,
-        index=True
-    )
+    
+    # add foreign-key
+    request_id: UUID = Field(foreign_key="cargo_requests.request_id", nullable=False, unique=True, index=True)
 
     selected_option_id: int = Field(foreign_key="flight_options.option_id", nullable=False, index=True)
     awb: Optional[str] = Field(default=None, max_length=50, unique=True)
-    status: str = Field(default="PENDING", max_length=50, index=True, nullable=False)
+    status: str = Field(default="pending", max_length=50, index=True, nullable=False)
     human_choice: bool = Field(default=True, nullable=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
     
@@ -657,6 +746,7 @@ class CargoBooking(SQLModel, TenantScopedMixin, table=True):
         back_populates="booking",
         sa_relationship_kwargs={"foreign_keys": "[CargoBooking.request_id]"}
     )
+    
     selected_option: FlightOption = Relationship(
         back_populates="bookings",
         sa_relationship_kwargs={"foreign_keys": "[CargoBooking.selected_option_id]"}
@@ -667,19 +757,11 @@ class CargoBooking(SQLModel, TenantScopedMixin, table=True):
 
 
 # create flight-cache model
-class FlightCache(SQLModel, TenantScopedMixin, table=True):
+class FlightCache(SQLModel, table=True):
     __tablename__ = "flight_cache"
 
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "cache_key",
-            name="uq_flight_cache_tenant_key",
-        ),
-    )
-
     cache_id: Optional[int] = Field(default=None, primary_key=True)
-    
+    tenant_id: UUID = Field(foreign_key="tenants.tenant_id", primary_key=True, index=True, nullable=False)
     cache_key: str = Field(max_length=255, nullable=False)
     route: str = Field(max_length=255, nullable=False, index=True)
     data: Dict[str, Any] = Field(default_factory=dict, sa_type=JSON, nullable=False)
@@ -689,6 +771,9 @@ class FlightCache(SQLModel, TenantScopedMixin, table=True):
         index=True
     )
 
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cache_key", name="uq_flight_cache_tenant_key"),
+    )
 
 
 
@@ -716,3 +801,4 @@ CargoRequest.model_rebuild()
 FlightOption.model_rebuild()
 CargoBooking.model_rebuild()
 FlightCache.model_rebuild()
+CargoMessage.model_rebuild()
