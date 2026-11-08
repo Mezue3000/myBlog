@@ -600,6 +600,11 @@ class CargoRequest(SQLModel, TenantScopedMixin, table=True):
         },
     )
     
+    messages: list["CargoMessage"] = Relationship(
+        back_populates="cargo_request",
+        cascade_delete=True
+    )
+    
     __table_args__ = (
         Index("ix_cargo_route_date", "origin", "dest", "flight_date"),
         Index("ix_cargo_tenant_status", "tenant_id", "status"),
@@ -655,7 +660,7 @@ class CargoMessage(SQLModel, TenantScopedMixin, table=True):
         ),
     )
 
-    # Primary key
+    # primary key
     message_id:  Optional[int] = Field(default=None, primary_key=True)
     
     # associated cargo request
@@ -685,6 +690,9 @@ class CargoMessage(SQLModel, TenantScopedMixin, table=True):
 
     # creation timestamp
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # create relationship
+    cargo_request: "CargoRequest" = Relationship(back_populates="messages")
 
 
 
